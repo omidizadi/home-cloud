@@ -37,7 +37,7 @@ class HomeCloudApp(App):
         super().__init__()
         self.dry_run = dry_run
         self.force = force
-        self.debug = debug
+        self._debug = debug
         setup_logging(debug=debug)
         self.cfg: Config = load_config()
 
