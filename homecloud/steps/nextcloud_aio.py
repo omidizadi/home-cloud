@@ -135,9 +135,20 @@ class NextcloudAioStep(Step):
                 f"Tailscale Serve not configured — Nextcloud unreachable at {url}.\n"
                 "Run the repair action to wire Tailscale Serve → AIO.",
             )
+        # Serve is configured, but is Apache actually listening on :11000 and
+        # answering? If not, repair is needed (e.g. Apache still on :443 with
+        # the old DuckDNS domain).
+        apache_ok = self._apache_responds()
+        if not apache_ok:
+            return StepResult(
+                self.name, False,
+                f"Master: running | Nextcloud: {nc_st} | Serve: ✅ | Apache: ❌ (run repair)",
+                f"Apache not responding on :{AIO_APACHE_PORT} — likely still on :443 with the old domain.\n"
+                "Run the repair action to recreate Apache on :11000.",
+            )
         return StepResult(
             self.name, True,
-            f"Master: running | Nextcloud: {nc_st} | Serve: ✅",
+            f"Master: running | Nextcloud: {nc_st} | Serve: ✅ | Apache: ✅",
             f"Nextcloud URL: {url}",
         )
 
@@ -419,3 +430,13 @@ class NextcloudAioStep(Step):
                 return True
             time.sleep(3)
         return False
+
+    def _apache_responds(self) -> bool:
+        """True if AIO's Apache is listening on :11000 and answering."""
+        if self.dry_run:
+            return True
+        r = run(
+            f"curl -s --max-time 5 -o /dev/null http://127.0.0.1:{AIO_APACHE_PORT}",
+            capture=True,
+        )
+        return r.ok or r.returncode == 52
