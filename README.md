@@ -542,6 +542,55 @@ home-cloud/
 
 ---
 
+## 💾 Accessing the SSD Outside Nextcloud
+
+Your SSD is mounted at `/mnt/ncdata` with this layout:
+
+| Path | Purpose | Owner |
+| :-- | :-- | :-- |
+| `/mnt/ncdata/nextcloud/` | Nextcloud's internal data (managed by NC — don't edit directly) | www-data (uid 33) |
+| `/mnt/ncdata/files/` | **Samba share** — your "drop any file here" folder | your user (uid 1000) |
+| `/mnt/ncdata/borg-backup/` | Local borg backup snapshots | root |
+
+### Samba (recommended)
+
+Already installed if you ran the Samba step. This gives you read/write access to `/mnt/ncdata/files/` from any device on your LAN.
+
+**macOS:** Finder → Go → Connect to Server (⌘K) → `smb://<pi-ip>/NAS Files`
+
+**Linux:** `smbclient //<pi-ip>/"NAS Files" -U <samba-user>`
+
+**Windows:** File Explorer → `\\<pi-ip>\NAS Files`
+
+### SSH / SCP
+
+```bash
+# Browse the SSD
+ssh pi@<pi-ip>
+ls -la /mnt/ncdata/files/
+
+# Copy a file off the SSD
+scp pi@<pi-ip>:/mnt/ncdata/files/somefile.pdf ./
+
+# Copy a file onto the SSD
+scp ./photo.jpg pi@<pi-ip>:/mnt/ncdata/files/
+```
+
+> You need `sudo` to access `/mnt/ncdata/nextcloud/` since it's owned by www-data.
+
+### SFTP (GUI clients)
+
+Use FileZilla, Cyberduck, WinSCP, etc. — connect to `<pi-ip>` with your SSH credentials, then navigate to `/mnt/ncdata/`.
+
+### ⚠️ Don't manually edit `/mnt/ncdata/nextcloud/`
+
+That folder is Nextcloud's internal database-tracked storage. Adding or removing files there directly will confuse Nextcloud. Instead:
+
+- **To make files visible in Nextcloud:** put them in `/mnt/ncdata/files/` (the Samba share), then in the Nextcloud web UI go to **Admin → External Storage → Add storage → Local** and set the path to `/mnt/ncdata/files`. That folder will then appear alongside your other Nextcloud folders.
+- **Or** upload via Nextcloud's web UI or desktop sync client as usual.
+
+---
+
 ## ⚠️ Troubleshooting
 
 | Problem | Fix |
