@@ -12,6 +12,7 @@ reachable at `http://<pi-tailscale-ip>` from any device on the tailnet.
 
 from __future__ import annotations
 
+from ..services import unit_status
 from ..utils import run, which
 from .base import Step, StepResult
 

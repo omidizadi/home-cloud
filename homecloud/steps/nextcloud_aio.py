@@ -127,8 +127,18 @@ class NextcloudAioStep(Step):
         ts_fqdn = self._tailscale_fqdn()
         serve_ok = self._serve_configured()
         url = f"https://{ts_fqdn}" if ts_fqdn else "https://<pi>.<tailnet>.ts.net"
-        msg = f"Master: running | Nextcloud: {nc_st} | Serve: {'✅' if serve_ok else '❌ (run repair)'}"
-        return StepResult(self.name, True, msg, f"Nextcloud URL: {url}" if serve_ok else "")
+        if not serve_ok:
+            return StepResult(
+                self.name, False,
+                f"Master: running | Nextcloud: {nc_st} | Serve: ❌ (run repair)",
+                f"Tailscale Serve not configured — Nextcloud unreachable at {url}.\n"
+                "Run the repair action to wire Tailscale Serve → AIO.",
+            )
+        return StepResult(
+            self.name, True,
+            f"Master: running | Nextcloud: {nc_st} | Serve: ✅",
+            f"Nextcloud URL: {url}",
+        )
 
     # ── repair ───────────────────────────────────────────────────────────────
     #
