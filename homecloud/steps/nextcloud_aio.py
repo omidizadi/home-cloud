@@ -13,6 +13,7 @@ Nextcloud becomes unreachable on every address (domain, Tailscale IP, LAN IP).
 from __future__ import annotations
 
 import json
+import os
 import time
 
 from ..constants import (
@@ -143,16 +144,21 @@ class NextcloudAioStep(Step):
     # ── repair ───────────────────────────────────────────────────────────────
     #
     # This is the heart of the CGNAT fix. It:
+    #   0. Updates AIO's stored domain to the tailnet hostname (so Caddy stops
+    #      trying Let's Encrypt for the unreachable DuckDNS domain).
     #   1. Ensures the mastercontainer runs with APACHE_PORT=11000 (reverse-proxy
     #      mode). If it was launched the old way (APACHE_PORT=443 + Let's
     #      Encrypt), it is recreated with the correct env.
-    #   2. Configures `tailscale serve` to terminate TLS on :443 and forward to
+    #   2. Force-recreates the Apache container so the mastercontainer respawns it
+    #      on :11000 with the new domain (the mastercontainer only re-reads its
+    #      env/domain when Apache is absent).
+    #   3. Configures `tailscale serve` to terminate TLS on :443 and forward to
     #      AIO's Apache on :11000. Tailscale obtains the cert via DNS-01, which
     #      works on CGNAT.
-    #   3. Points Nextcloud's trusted_domains / overwritehost at the tailnet
+    #   4. Points Nextcloud's trusted_domains / overwritehost at the tailnet
     #      hostname so the web UI stops redirecting to the unreachable DuckDNS
     #      domain.
-    #   4. Verifies Nextcloud answers over HTTPS.
+    #   5. Verifies Nextcloud answers over HTTPS.
 
     def repair(self) -> StepResult:
         ts_fqdn = self._tailscale_fqdn()
@@ -162,6 +168,10 @@ class NextcloudAioStep(Step):
                 "Tailscale not ready — cannot repair",
                 "Run the Tailscale step first (it must be up and authenticated).",
             )
+
+        # 0. Update AIO's stored domain so Caddy stops trying Let's Encrypt for
+        #    the DuckDNS domain (which always times out on CGNAT).
+        self._update_aio_domain(ts_fqdn)
 
         # 1. Ensure mastercontainer is in reverse-proxy mode.
         if not self._master_uses_reverse_proxy():
@@ -178,7 +188,27 @@ class NextcloudAioStep(Step):
             if not res.success:
                 return res
 
-        # 2. Wire Tailscale Serve → AIO Apache (:11000).
+        # 2. Force-recreate the Apache container so the mastercontainer respawns
+        #    it with APACHE_PORT=11000 and the new domain. The mastercontainer
+        #    only re-reads its env/domain when Apache is absent, so we must remove
+        #    the old one (still on :443 with the DuckDNS domain) and restart the
+        #    mastercontainer to trigger recreation.
+        self.log("Force-recreating Apache container on :11000...")
+        if not self.dry_run:
+            run("tailscale serve reset", sudo=True, capture=True)  # free :443
+            run("docker stop nextcloud-aio-apache", sudo=True, capture=True)
+            run("docker rm -f nextcloud-aio-apache", sudo=True, capture=True)
+            run(f"docker restart {AIO_MASTER_CONTAINER}", sudo=True, capture=True)
+            # Wait for the mastercontainer to respawn Apache on :11000.
+            if not self._wait_for_port(AIO_APACHE_PORT, timeout=90):
+                return StepResult(
+                    self.name, False,
+                    f"Apache did not come up on :{AIO_APACHE_PORT}",
+                    "The mastercontainer should respawn nextcloud-aio-apache.\n"
+                    f"Check: sudo docker logs --tail 30 {AIO_MASTER_CONTAINER}",
+                )
+
+        # 3. Wire Tailscale Serve → AIO Apache (:11000).
         self.log("Configuring Tailscale Serve (https://<tailnet> → http://127.0.0.1:11000)...")
         if not self.dry_run:
             # Reset any previous serve config, then publish HTTPS on :443.
@@ -194,7 +224,7 @@ class NextcloudAioStep(Step):
                     r.stderr or r.stdout,
                 )
 
-        # 3. Point Nextcloud at the tailnet hostname.
+        # 4. Point Nextcloud at the tailnet hostname.
         if not self.dry_run and container_status(AIO_NEXTCLOUD_CONTAINER) == "running":
             self.log(f"Setting trusted_domains / overwritehost to {ts_fqdn}...")
             occ = f"docker exec --user www-data {AIO_NEXTCLOUD_CONTAINER} php occ"
@@ -205,7 +235,7 @@ class NextcloudAioStep(Step):
             run(f"{occ} config:system:set trusted_proxies 2 --value=127.0.0.1", sudo=True, capture=True)
             run(f"{occ} config:system:set trusted_proxies 3 --value=100.64.0.0/10", sudo=True, capture=True)
 
-        # 4. Verify. Use --resolve because the Pi runs with --accept-dns=false
+        # 5. Verify. Use --resolve because the Pi runs with --accept-dns=false
         #    and cannot resolve its own MagicDNS name via getent.
         if not self.dry_run:
             self.log("Verifying Nextcloud is reachable over Tailscale HTTPS...")
@@ -328,3 +358,64 @@ class NextcloudAioStep(Step):
             return ""
         r = run("tailscale ip -4", sudo=True, capture=True)
         return r.stdout.strip().splitlines()[0] if r.ok and r.stdout.strip() else ""
+
+    def _update_aio_domain(self, new_domain: str) -> None:
+        """Update the domain stored in AIO's configuration.json.
+
+        AIO's Apache (Caddy) reads this to decide which hostname to obtain a
+        cert for. If it still points at the DuckDNS domain, Caddy keeps trying
+        (and failing) Let's Encrypt on CGNAT. We rewrite it to the tailnet
+        hostname so Caddy stops the ACME attempts.
+        """
+        if self.dry_run:
+            return
+        # configuration.json lives in the mastercontainer volume, mounted at
+        # /mnt/docker-aio-config inside the container. Edit it on the host via
+        # the volume's mountpoint to avoid `docker exec` JSON-parsing quirks.
+        r = run(
+            "docker volume inspect nextcloud_aio_mastercontainer "
+            "--format='{{.Mountpoint}}'",
+            sudo=True, capture=True,
+        )
+        if not r.ok:
+            self.log("Could not find mastercontainer volume — skipping domain update")
+            return
+        mp = r.stdout.strip()
+        cfg_path = f"{mp}/data/configuration.json"
+        # Read current JSON, update domain, write back.
+        r = run(f"cat {cfg_path}", sudo=True, capture=True)
+        if not r.ok:
+            self.log("Could not read configuration.json — skipping domain update")
+            return
+        try:
+            data = json.loads(r.stdout)
+        except json.JSONDecodeError:
+            self.log("configuration.json is not valid JSON — skipping domain update")
+            return
+        old = data.get("domain", "")
+        if old == new_domain:
+            return
+        data["domain"] = new_domain
+        # Write via a temp file + sudo install (we're not root).
+        import tempfile
+        fd, tmp = tempfile.mkstemp(prefix="homecloud-aio-cfg-")
+        try:
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f)
+            run(f"install -m 644 -o root -g root {tmp} {cfg_path}", sudo=True, capture=True)
+            self.log(f"Updated AIO domain: {old} → {new_domain}")
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+
+    def _wait_for_port(self, port: int, *, timeout: int = 60) -> bool:
+        """Wait until something is listening on the given port."""
+        for _ in range(timeout // 3):
+            r = run(f"curl -s --max-time 3 -o /dev/null http://127.0.0.1:{port}",
+                    capture=True)
+            if r.ok or r.returncode == 52:  # 52 = empty reply = port open
+                return True
+            time.sleep(3)
+        return False
