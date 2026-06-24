@@ -8,6 +8,7 @@ from textual.screen import Screen
 from textual.widgets import Button, Footer, Header, Label, RichLog
 
 from ..steps import ALL_STEPS
+from ..utils import log
 
 
 class UninstallScreen(Screen):
@@ -56,39 +57,50 @@ class UninstallScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-uninstall":
-            self.run_worker(self._uninstall)
+            # thread=True keeps step.undo() (which calls subprocess.run) off the
+            # event loop so the RichLog repaints live instead of freezing.
+            self.run_worker(self._uninstall, thread=True)
         elif event.button.id == "btn-back":
             self.app.pop_screen()
 
     def _log(self, msg: str) -> None:
-        self.query_one("#log", RichLog).write(msg)
+        """Thread-safe write to the log widget."""
+        try:
+            log_widget = self.query_one("#log", RichLog)
+            self.app.call_from_thread(log_widget.write, msg)
+        except Exception:
+            pass
 
     async def _uninstall(self) -> None:
-        log_widget = self.query_one("#log", RichLog)
-        log_widget.clear()
-        self._log("[bold red]━━ Conservative Uninstall ━━[/]\n")
-        self._log("[dim]Data on /mnt/ncdata will be PRESERVED.[/]\n")
+        try:
+            log_widget = self.query_one("#log", RichLog)
+            self.app.call_from_thread(log_widget.clear)
+            self._log("[bold red]━━ Conservative Uninstall ━━[/]\n")
+            self._log("[dim]Data on /mnt/ncdata will be PRESERVED.[/]\n")
 
-        # Run undo() on each step in reverse order
-        for StepClass in reversed(ALL_STEPS):
-            step = StepClass(self.app)
-            self._log(f"[yellow]Removing: {step.label}...[/]")
-            try:
-                result = step.undo()
-                if result.success:
-                    self._log(f"  [green]✓ {result.message}[/]")
-                else:
-                    self._log(f"  [red]✗ {result.message}[/]")
-            except Exception as e:
-                self._log(f"  [red]✗ EXCEPTION: {e}[/]")
+            # Run undo() on each step in reverse order
+            for StepClass in reversed(ALL_STEPS):
+                step = StepClass(self.app)
+                self._log(f"[yellow]Removing: {step.label}...[/]")
+                try:
+                    result = step.undo()
+                    if result.success:
+                        self._log(f"  [green]✓ {result.message}[/]")
+                    else:
+                        self._log(f"  [red]✗ {result.message}[/]")
+                except Exception as e:
+                    self._log(f"  [red]✗ EXCEPTION: {e}[/]")
 
-        # Clear state markers
-        from ..utils.state import clear_all
-        clear_all()
+            # Clear state markers
+            from ..utils.state import clear_all
+            clear_all()
 
-        # Remove config (optional — ask? for now keep it so user can reinstall)
-        self._log("\n[cyan]Config (.env) kept at /etc/homecloud/.env[/]")
-        self._log("[cyan]Use 'homecloud secrets export' to back up, then delete manually if desired.[/]")
+            # Remove config (optional — ask? for now keep it so user can reinstall)
+            self._log("\n[cyan]Config (.env) kept at /etc/homecloud/.env[/]")
+            self._log("[cyan]Use 'homecloud secrets export' to back up, then delete manually if desired.[/]")
 
-        self._log("\n[bold green]✅ Uninstall complete.[/]")
-        self._log("[bold]Your data is safe on the SSD at /mnt/ncdata[/]")
+            self._log("\n[bold green]✅ Uninstall complete.[/]")
+            self._log("[bold]Your data is safe on the SSD at /mnt/ncdata[/]")
+        except Exception as e:
+            self._log(f"[red bold]💥 Uninstall crashed: {e}[/]")
+            log.exception("uninstall worker crashed")
