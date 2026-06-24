@@ -67,6 +67,7 @@ def run(
     timeout: int | None = None,
     input_text: str | None = None,
     dry_run: bool = False,
+    env: dict[str, str] | None = None,
 ) -> Result:
     """Run a shell command.
 
@@ -78,6 +79,7 @@ def run(
         timeout: Timeout in seconds.
         input_text: Stdin input.
         dry_run: If True, log the command and return a fake success Result.
+        env: Extra environment variables merged on top of os.environ.
 
     Returns:
         Result with stdout/stderr.
@@ -99,6 +101,8 @@ def run(
         log.info("[dry-run] skipping execution")
         return Result(cmd=cmd_str, returncode=0, stdout="[dry-run]", stderr="")
 
+    proc_env = {**os.environ, **env} if env else None
+
     try:
         proc = subprocess.run(
             cmd_list if isinstance(cmd_list, list) else cmd_str,
@@ -107,6 +111,7 @@ def run(
             text=True,
             timeout=timeout,
             input=input_text,
+            env=proc_env,
             check=False,
         )
     except subprocess.TimeoutExpired:
