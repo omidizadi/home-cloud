@@ -75,10 +75,13 @@ def _run_self_update(check_only: bool = False) -> None:
         print(f"❌ git fetch failed: {r.stderr}")
         return
 
-    r = run(f"git -C {INSTALL_DIR} status -uno --porcelain", capture=True)
+    r = run(f"git -C {INSTALL_DIR} status -uno --porcelain", capture=True, sudo=True)
     local_changes = bool(r.stdout.strip())
 
-    r = run(f"git -C {INSTALL_DIR} log HEAD..origin/main --oneline", capture=True)
+    r = run(f"git -C {INSTALL_DIR} log HEAD..origin/main --oneline", capture=True, sudo=True)
+    if not r.ok:
+        print(f"❌ git log failed: {r.stderr.strip() or 'unknown error'}")
+        return
     new_commits = r.stdout.strip()
 
     if not new_commits:
