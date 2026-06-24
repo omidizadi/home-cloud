@@ -9,6 +9,7 @@ from .nextcloud_aio import NextcloudAioStep
 from .restic_s3 import ResticS3Step
 from .samba import SambaStep
 from .ssd import SsdStep
+from .tailscale import TailscaleStep
 from .telegram_bot import TelegramBotStep
 from .wifi import WifiStep
 
@@ -17,6 +18,7 @@ ALL_STEPS = [
     DockerStep,
     NextcloudAioStep,
     DuckDnsStep,
+    TailscaleStep,
     CoturnStep,
     SambaStep,
     WifiStep,
@@ -33,6 +35,7 @@ __all__ = [
     "DockerStep",
     "NextcloudAioStep",
     "DuckDnsStep",
+    "TailscaleStep",
     "CoturnStep",
     "SambaStep",
     "WifiStep",

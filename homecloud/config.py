@@ -55,6 +55,9 @@ class Config:
     nextcloud_admin_password: str = ""
     nextcloud_domain: str = ""  # derived from duckdns_domain if empty
 
+    # ── Tailscale (external access, bypasses DS-Lite/CGNAT) ──
+    tailscale_auth_key: str = ""  # tskey-... from https://login.tailscale.com/admin/settings/keys
+
     # ── Samba ──
     samba_user: str = ""
     samba_password: str = ""

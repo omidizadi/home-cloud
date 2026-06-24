@@ -175,7 +175,7 @@ class HomeCloudApp:
 
         # Services
         print("\n━━ Services ━━")
-        for svc in ["docker", "smbd", "ncbot", "cron"]:
+        for svc in ["docker", "smbd", "ncbot", "cron", "tailscaled"]:
             st = unit_status(svc)
             print(f"  {'✅' if st == 'active' else '❌'} {svc}: {st}")
 
@@ -324,6 +324,7 @@ class HomeCloudApp:
             ("telegram_bot_token", "Telegram bot token (123:ABC...)"),
             ("telegram_chat_id", "Telegram chat ID"),
             ("nextcloud_admin_password", "Nextcloud admin password (blank=generate)"),
+            ("tailscale_auth_key", "Tailscale auth key (blank=interactive login)"),
             ("samba_user", "Samba username"),
             ("samba_password", "Samba password (blank=generate)"),
             ("wifi_ssid", "WiFi SSID (blank=Ethernet)"),

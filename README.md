@@ -16,7 +16,10 @@ interactive **Telegram bot** for status reports.
 - **5TB SSD** as the data directory (SD card stays for OS/Docker only)
 - **Samba share** — access the SSD for non-Nextcloud files without detaching it
 - **DuckDNS** — free dynamic DNS + automatic Let's Encrypt TLS
+- **Tailscale** — WireGuard mesh VPN for external access (bypasses DS-Lite/CGNAT,
+  no port forwarding needed, no bandwidth/timeout limits like Cloudflare Tunnel)
 - **Nextcloud Talk** — 1-1 video calls via AIO's built-in Coturn TURN server
+  (works over Tailscale — no port forwarding required)
 - **Nightly restic backup → S3 Glacier Deep Archive** — block-level deduplication
   means you only pay for ~your actual data size, not `200GB × N nights`
 - **Interactive Telegram bot** — daily reports + on-demand commands
@@ -105,7 +108,17 @@ running for real.
 
 ### Step 4: Port forwarding (on your router)
 
-Forward these ports to your Pi's local IP (find it with `hostname -I` on the Pi):
+> **⚠️ DS-Lite / CGNAT check first!** Many ISPs (Telekom, Vodafone, 1&1 in
+> Germany) assign a shared IPv4 via DS-Lite — you have **no real public IPv4**
+> and port forwarding **will not work**. Test from a phone on mobile data:
+> ```
+> curl -s https://api.ipify.org  # your public IPv4
+> nc -z -w5 <that-ip> 443 && echo OPEN || echo BLOCKED
+> ```
+> If blocked, skip port forwarding and use **Tailscale** (Step 5) instead.
+
+**If you have a real public IPv4**, forward these ports to your Pi's local IP
+(find it with `hostname -I` on the Pi):
 
 | Port | Protocol | Purpose |
 | :--: | :------: | :------ |
@@ -115,7 +128,51 @@ Forward these ports to your Pi's local IP (find it with `hostname -I` on the Pi)
 | **3478** | TCP + UDP | Talk TURN server (video calls) |
 | **5349** | TCP + UDP | Talk TURN over TLS (video calls) |
 
-### Step 5: Complete AIO setup (one-time, in your browser)
+### Step 5: Install Tailscale (external access, bypasses DS-Lite)
+
+Tailscale creates a WireGuard mesh VPN. Every device with the Tailscale client
+installed gets a stable `100.x.y.z` IP and can reach the Pi — **no port
+forwarding needed**. This is the recommended way to expose Nextcloud when your
+ISP uses DS-Lite / CGNAT (no real public IPv4).
+
+**1. Get a Tailscale auth key (optional but recommended for non-interactive setup):**
+- Sign up at <https://tailscale.com> (free for personal use, up to 100 devices)
+- Go to **Settings → Keys → Generate auth key**
+- Copy the key (starts with `tskey-...`)
+- Set it in your config: `TAILSCALE_AUTH_KEY=tskey-...`
+
+**2. Run the Tailscale install step** (from the menu or CLI):
+```bash
+homecloud install  # step 5: Tailscale
+```
+
+If you set an auth key, the Pi authenticates automatically. If not, the step
+prints a login URL — open it in your browser to authorize the Pi.
+
+**3. Install Tailscale on your devices:**
+- Download from <https://tailscale.com/download>
+- Available for iOS, Android, macOS, Windows, Linux
+- Log in with the same account you used for the Pi
+
+**4. Access Nextcloud over Tailscale:**
+```
+https://<pi-tailscale-ip>       # Nextcloud
+https://<pi-tailscale-ip>:8080   # AIO admin panel
+```
+Find the Pi's Tailscale IP with `tailscale ip -4` on the Pi, or in the
+[Tailscale admin console](https://login.tailscale.com/admin/machines).
+
+> **Why Tailscale over port forwarding?**
+> - Works with DS-Lite / CGNAT (no real public IPv4)
+> - No upload bandwidth limits (unlike Cloudflare Tunnel's 100 MB cap)
+> - No request timeout (unlike Cloudflare Tunnel's 100s) — Talk video calls work
+> - Encrypted end-to-end (WireGuard)
+> - Free for personal use (up to 100 devices)
+>
+> **Downside:** every device that accesses Nextcloud needs the Tailscale client
+> installed. It's not a public URL you can share with anyone.
+
+### Step 6: Complete AIO setup (one-time, in your browser)
 
 After the installer finishes, Nextcloud isn't running yet — you need to open
 the AIO panel and click through a few screens.
@@ -123,6 +180,10 @@ the AIO panel and click through a few screens.
 **1. Open the AIO panel:**
 ```
 https://<pi-ip>:8080
+```
+Or over Tailscale (if installed):
+```
+https://<pi-tailscale-ip>:8080
 ```
 Accept the self-signed certificate warning in your browser.
 
@@ -132,16 +193,20 @@ and submit. AIO validates that:
 - Port 443 is open and forwarded to your Pi
 - The DNS A record points to your public IP
 
-> **If validation fails:** double-check port forwarding and that your DuckDNS
-> subdomain IP matches your current public IP. You can also [skip domain
-> validation](https://github.com/nextcloud/all-in-one#how-to-skip-the-domain-validation)
-> if you're sure everything is correct.
+> **If validation fails (common with DS-Lite):** skip it. SSH into the Pi and run:
+> ```bash
+> sudo docker exec nextcloud-aio-mastercontainer \
+>   touch /mnt/docker-aio-config/secret/danger-skip-domain-validation
+> sudo docker restart nextcloud-aio-mastercontainer
+> ```
+> Then reopen the AIO panel and enter the domain — it'll accept it without
+> checking. You can still use Nextcloud over Tailscale or LAN.
 
 **3. Pick optional containers:**
 | Container | Recommended? | Why |
 | :-- | :--: | :-- |
 | Nextcloud (core) | ✅ always | The actual cloud |
-| Nextcloud Talk | ✅ yes | Video/audio calls |
+| Nextcloud Talk | ✅ yes | Video/audio calls (works over Tailscale) |
 | Collabora | optional | Online document editing (LibreOffice) |
 | ClamAV | ❌ no | Antivirus — heavy, eats RAM on a Pi |
 | Fulltextsearch | ❌ no | Elasticsearch — heavy on Pi |
@@ -153,32 +218,31 @@ Use something strong and store it in a password manager.
 **5. Click "Start containers"** — AIO pulls Docker images and boots everything.
 This takes 5–10 minutes on a Pi. You'll see progress in the panel.
 
-**6. When all containers show ✅**, your Nextcloud is live at:
-```
-https://<your-subdomain>.duckdns.org
-```
-Log in with username `admin` and the password you just set.
+**6. When all containers show ✅**, your Nextcloud is live. Access it via:
+
+| Where you are | URL |
+| :-- | :-- |
+| Same LAN | `https://<pi-ip>` |
+| Over Tailscale | `https://<pi-tailscale-ip>` |
+| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
+
+Log in with username `admin` and the password you set in step 4.
 
 > **⚠️ You must open the AIO panel and complete these steps before
 > Nextcloud is usable.** The installer only launches the master container —
 > the actual Nextcloud instance, database, Redis, etc. are started from
 > inside the AIO panel.
 
-**If DuckDNS isn't working yet** (or you're on your LAN), use:
-```
-https://<pi-ip>
-```
+### Step 7: Access Nextcloud (daily use)
 
-> `<pi-ip>` is your Pi's local IP (e.g. `192.168.1.50`). Find it with
-> `hostname -I` on the Pi, or check your router's DHCP lease table.
+Once AIO containers are running, pick the URL that matches where you are:
 
-### Step 6: Access Nextcloud (daily use)
+| Where | URL |
+| :-- | :-- |
+| Same LAN | `https://<pi-ip>` |
+| Over Tailscale | `https://<pi-tailscale-ip>` |
+| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
 
-Once AIO containers are running and DuckDNS + TLS are configured, this is
-your cloud:
-```
-https://<your-subdomain>.duckdns.org
-```
 Log in with the admin username (`admin`) and the Nextcloud admin password from
 your config.
 
@@ -325,6 +389,20 @@ The master password for the Nextcloud AIO admin panel (port 8080). Pick
 something strong — the installer can auto-generate one if left blank. Store it
 in a password manager; you'll need it to log in to the AIO management UI.
 
+### Tailscale auth key (optional: `tailscale_auth_key`)
+
+Used for non-interactive authentication of the Pi to your Tailscale tailnet.
+If set, the Tailscale step authenticates automatically. If left blank, the
+step prints a login URL you must open in your browser.
+
+1. Sign up at <https://tailscale.com> (free for personal use, up to 100 devices)
+2. Go to **Settings → Keys → Generate auth key**
+3. Copy the key (starts with `tskey-...`)
+
+> **Without an auth key**, the Tailscale step still works — it just requires
+> you to open a URL in your browser to authorize the Pi. The auth key makes
+> it fully automated (useful for headless installs).
+
 ### Samba user + password (`samba_user`, `samba_password`)
 
 The username and password for the network file share. This is a local Linux
@@ -352,12 +430,13 @@ schedules (backup at 3 AM, daily report at 8 AM).
 | 2 | **Docker** | Install Docker Engine, add user to docker group |
 | 3 | **Nextcloud AIO** | Launch master container with `NEXTCLOUD_DATADIR` on SSD |
 | 4 | **DuckDNS** | Dynamic DNS updater (5-min cron) for free domain + TLS |
-| 5 | **Talk (Coturn)** | Guide enabling AIO's built-in TURN server for video calls |
-| 6 | **Samba** | Network share at `/mnt/ncdata/files` for non-Nextcloud files |
-| 7 | **WiFi** | (Optional) Connect via NetworkManager |
-| 8 | **restic + S3** | Init repo, deploy nightly backup script (3 AM cron) |
-| 9 | **Telegram bot** | Interactive bot as systemd service, daily 8 AM report |
-| 10 | **Hardening** | Docker→SSD dependency, fsck, verify all services auto-start |
+| 5 | **Tailscale** | WireGuard mesh VPN for external access (bypasses DS-Lite/CGNAT) |
+| 6 | **Talk (Coturn)** | Guide enabling AIO's built-in TURN server for video calls |
+| 7 | **Samba** | Network share at `/mnt/ncdata/files` for non-Nextcloud files |
+| 8 | **WiFi** | (Optional) Connect via NetworkManager |
+| 9 | **restic + S3** | Init repo, deploy nightly backup script (3 AM cron) |
+| 10 | **Telegram bot** | Interactive bot as systemd service, daily 8 AM report |
+| 11 | **Hardening** | Docker→SSD dependency, fsck, verify all services auto-start |
 
 Each step is **idempotent** — running it twice is safe. Completed steps are
 tracked via marker files in `/etc/homecloud/state/`.

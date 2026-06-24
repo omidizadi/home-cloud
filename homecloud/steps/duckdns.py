@@ -52,7 +52,10 @@ class DuckDnsStep(Step):
         return StepResult(
             self.name, True,
             f"DuckDNS configured for {domain}.duckdns.org",
-            "Remember to forward ports 80, 443, and 3478 on your router to the Pi's IP.",
+            "DuckDNS provides the domain + TLS certs for Nextcloud.\n"
+            "If your ISP uses DS-Lite/CGNAT (no real public IPv4),\n"
+            "port forwarding won't work — use Tailscale for external access.\n"
+            "DuckDNS is still useful for the Let's Encrypt cert via AIO.",
         )
 
     def _read_log(self) -> str:

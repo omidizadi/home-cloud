@@ -41,7 +41,7 @@ class HardeningStep(Step):
 
         # 3. Verify all services are enabled
         self.log("Verifying service auto-start...")
-        for svc in ["docker", "smbd", "ncbot", "cron"]:
+        for svc in ["docker", "smbd", "ncbot", "cron", "tailscaled"]:
             if not unit_enabled(svc):
                 issues.append(f"{svc} is not enabled for boot")
                 run(f"systemctl enable {svc}", sudo=True, dry_run=self.dry_run)
@@ -71,7 +71,7 @@ class HardeningStep(Step):
             return StepResult(self.name, True, "[dry-run]")
         checks = []
         all_ok = True
-        for svc in ["docker", "smbd", "ncbot", "cron"]:
+        for svc in ["docker", "smbd", "ncbot", "cron", "tailscaled"]:
             ok = unit_enabled(svc)
             checks.append(f"{svc}: {'✅' if ok else '❌'}")
             if not ok:

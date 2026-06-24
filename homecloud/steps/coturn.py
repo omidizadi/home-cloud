@@ -26,11 +26,15 @@ class CoturnStep(Step):
             f"  3. Enter Talk port: {TURN_PORT}\n"
             f"  4. AIO will auto-configure Coturn and inject credentials into Talk.\n"
             f"  5. Start/restart containers.\n\n"
-            f"Then forward these ports on your router to the Pi:\n"
+            f"PORT FORWARDING (only if you have a real public IPv4):\n"
             f"  - {TURN_PORT} TCP+UDP  (TURN/STUN, required)\n"
             f"  - {TURN_TLS_PORT} TCP+UDP (TURN over TLS, optional)\n"
             f"  - 443 TCP (Nextcloud HTTPS)\n"
             f"  - 80 TCP (Let's Encrypt renewal)\n\n"
+            f"DS-Lite / CGNAT (no real public IPv4):\n"
+            f"  Port forwarding won't work. Use Tailscale instead —\n"
+            f"  Talk works over the Tailscale mesh with no port forwarding.\n"
+            f"  Install Tailscale on both call participants.\n\n"
             f"In Nextcloud → Admin → Talk, verify STUN/TURN servers show a green checkmark."
         )
 
