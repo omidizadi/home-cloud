@@ -57,70 +57,82 @@ class InstallScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id
         if bid == "btn-start" and not self._installing:
-            self.run_worker(self._run_install)
+            # thread=True keeps step.run() (which calls subprocess.run) off the
+            # async event loop, so the RichLog repaints live instead of freezing.
+            self.run_worker(self._run_install, thread=True)
         elif bid == "btn-config":
             self.app.push_screen("config")
         elif bid == "btn-back":
             self.app.pop_screen()
 
+    def _log(self, log_widget: RichLog, msg: str) -> None:
+        """Write a line to the log widget from a worker thread."""
+        self.app.call_from_thread(log_widget.write, msg)
+
     async def _run_install(self) -> None:
         self._installing = True
-        log_widget = self.query_one("#log", RichLog)
-        log_widget.clear()
+        try:
+            log_widget = self.query_one("#log", RichLog)
+            self.app.call_from_thread(log_widget.clear)
 
-        # Reload config in case it was edited
-        self.app.cfg = load_config()
+            # Reload config in case it was edited
+            self.app.cfg = load_config()
 
-        if not self.app.cfg.is_complete():
-            log_widget.write("[red]✗ Configuration incomplete. Edit config first.[/]")
-            self._installing = False
-            return
+            if not self.app.cfg.is_complete():
+                self._log(log_widget, "[red]✗ Configuration incomplete. Edit config first.[/]")
+                self._log(log_widget, "[yellow]Press ⚙️  Edit Config to set up required values.[/]")
+                return
 
-        log_widget.write(f"[cyan]Dry run:[/] {self.app.dry_run}")
-        log_widget.write(f"[cyan]Steps:[/] {len(ALL_STEPS)}\n")
+            self._log(log_widget, f"[cyan]Dry run:[/] {self.app.dry_run}")
+            self._log(log_widget, f"[cyan]Steps:[/] {len(ALL_STEPS)}\n")
 
-        failed: list[str] = []
-        for i, StepClass in enumerate(ALL_STEPS, 1):
-            step = StepClass(self.app)
-            log_widget.write(f"[bold yellow]━━━ Step {i}/{len(ALL_STEPS)}: {step.label} ━━━[/]")
+            failed: list[str] = []
+            for i, StepClass in enumerate(ALL_STEPS, 1):
+                step = StepClass(self.app)
+                self._log(log_widget, f"[bold yellow]━━━ Step {i}/{len(ALL_STEPS)}: {step.label} ━━━[/]")
 
-            if step.is_done() and not self.app.force:
-                log_widget.write("  [green]✓ already done (skip)[/]")
-                continue
+                if step.is_done() and not self.app.force:
+                    self._log(log_widget, "  [green]✓ already done (skip)[/]")
+                    continue
 
-            if not step.deps_satisfied():
-                missing = [d for d in step.depends_on if not self.app._step_done(d)]
-                log_widget.write(f"  [red]✗ dependencies not met: {missing}[/]")
-                failed.append(step.name)
-                continue
+                if not step.deps_satisfied():
+                    missing = [d for d in step.depends_on if not self.app._step_done(d)]
+                    self._log(log_widget, f"  [red]✗ dependencies not met: {missing}[/]")
+                    failed.append(step.name)
+                    continue
 
-            try:
-                result = step.run()
-            except Exception as e:
-                log_widget.write(f"  [red]✗ EXCEPTION: {e}[/]")
-                log.exception("step %s failed", step.name)
-                failed.append(step.name)
-                continue
+                try:
+                    result = step.run()
+                except Exception as e:
+                    self._log(log_widget, f"  [red]✗ EXCEPTION: {e}[/]")
+                    log.exception("step %s failed", step.name)
+                    failed.append(step.name)
+                    continue
 
-            if result.success:
-                log_widget.write(f"  [green]✓ {result.message}[/]")
-                if result.details:
-                    for line in result.details.splitlines():
-                        log_widget.write(f"    [dim]{line}[/]")
+                if result.success:
+                    self._log(log_widget, f"  [green]✓ {result.message}[/]")
+                    if result.details:
+                        for line in result.details.splitlines():
+                            self._log(log_widget, f"    [dim]{line}[/]")
+                else:
+                    self._log(log_widget, f"  [red]✗ {result.message}[/]")
+                    if result.details:
+                        self._log(log_widget, f"    [dim]{result.details}[/]")
+                    failed.append(step.name)
+
+                self._log(log_widget, "")
+
+            self._log(log_widget, "=" * 60)
+            if failed:
+                self._log(log_widget, f"[red]Completed with {len(failed)} failed step(s): {failed}[/]")
+                self._log(log_widget, "[yellow]Use Repair screen to retry failed steps.[/]")
             else:
-                log_widget.write(f"  [red]✗ {result.message}[/]")
-                if result.details:
-                    log_widget.write(f"    [dim]{result.details}[/]")
-                failed.append(step.name)
-
-            log_widget.write("")
-
-        log_widget.write("=" * 60)
-        if failed:
-            log_widget.write(f"[red]Completed with {len(failed)} failed step(s): {failed}[/]")
-            log_widget.write("[yellow]Use Repair screen to retry failed steps.[/]")
-        else:
-            log_widget.write("[green bold]✅ All steps completed successfully![/]")
-            log_widget.write("[cyan]Next: open https://<pi-ip>:8080 to finish Nextcloud AIO setup.[/]")
-
-        self._installing = False
+                self._log(log_widget, "[green bold]✅ All steps completed successfully![/]")
+                self._log(log_widget, "[cyan]Next: open https://<pi-ip>:8080 to finish Nextcloud AIO setup.[/]")
+        except Exception as e:
+            # Safety net — never let the worker die silently with _installing=True
+            log_widget = self.query_one("#log", RichLog)
+            self._log(log_widget, f"[red bold]💥 Install crashed: {e}[/]")
+            log.exception("install worker crashed")
+        finally:
+            self._installing = False
