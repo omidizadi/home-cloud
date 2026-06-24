@@ -10,6 +10,27 @@ interactive **Telegram bot** for status reports.
 
 ---
 
+## Table of Contents
+
+- [✨ Features](#-features)
+- [📋 Architecture](#-architecture)
+- [🚀 Quick Start](#-quick-start)
+- [🔧 Configuration](#-configuration)
+- [📦 Installation Steps](#-installation-steps)
+- [🌐 Network & External Access](#-network--external-access)
+- [💾 Accessing Your Files](#-accessing-your-files)
+- [🤖 Telegram Bot](#-telegram-bot)
+- [💰 Backups & Costs](#-backups--costs)
+- [🔐 Secrets & Recovery](#-secrets--recovery)
+- [🔄 Reboot Survival](#-reboot-survival)
+- [⬆️ Updating](#⬆️-updating)
+- [⚠️ Troubleshooting](#-troubleshooting)
+- [🛠️ Development](#-development)
+- [🗂️ Project Structure](#-project-structure)
+- [📄 License](#-license)
+
+---
+
 ## ✨ Features
 
 - **Nextcloud AIO** — photos (Memories), files, and Talk (1-1 video calls)
@@ -65,6 +86,11 @@ interactive **Telegram bot** for status reports.
 
 ## 🚀 Quick Start
 
+The fast path to a running home cloud. Detailed config values are in
+[🔧 Configuration](#-configuration); the full step list is in
+[📦 Installation Steps](#-installation-steps); external access and the one-time
+AIO browser setup are in [🌐 Network & External Access](#-network--external-access).
+
 ### Step 0: Flash the OS (manual)
 
 1. Download **Raspberry Pi Imager**
@@ -106,189 +132,16 @@ homecloud --dry-run
 This prints every command without executing — review what will happen before
 running for real.
 
-### Step 4: Port forwarding (on your router)
+### Step 4: Complete network & AIO setup
 
-> **⚠️ DS-Lite / CGNAT check first!** Many ISPs (Telekom, Vodafone, 1&1 in
-> Germany) assign a shared IPv4 via DS-Lite — you have **no real public IPv4**
-> and port forwarding **will not work**. Test from a phone on mobile data:
-> ```
-> curl -s https://api.ipify.org  # your public IPv4
-> nc -z -w5 <that-ip> 443 && echo OPEN || echo BLOCKED
-> ```
-> If blocked, skip port forwarding and use **Tailscale** (Step 5) instead.
-
-**If you have a real public IPv4**, forward these ports to your Pi's local IP
-(find it with `hostname -I` on the Pi):
-
-| Port | Protocol | Purpose |
-| :--: | :------: | :------ |
-| **80** | TCP | Let's Encrypt HTTP challenge (for TLS certs) |
-| **443** | TCP | Nextcloud HTTPS (daily use) |
-| **443** | UDP | HTTP/3 (optional, faster connections) |
-| **3478** | TCP + UDP | Talk TURN server (video calls) |
-| **5349** | TCP + UDP | Talk TURN over TLS (video calls) |
-
-### Step 5: Install Tailscale (external access, bypasses DS-Lite)
-
-Tailscale creates a WireGuard mesh VPN. Every device with the Tailscale client
-installed gets a stable `100.x.y.z` IP and can reach the Pi — **no port
-forwarding needed**. This is the recommended way to expose Nextcloud when your
-ISP uses DS-Lite / CGNAT (no real public IPv4).
-
-**1. Get a Tailscale auth key (optional but recommended for non-interactive setup):**
-- Sign up at <https://tailscale.com> (free for personal use, up to 100 devices)
-- Go to **Settings → Keys → Generate auth key**
-- Copy the key (starts with `tskey-...`)
-- Set it in your config: `TAILSCALE_AUTH_KEY=tskey-...`
-
-**2. Run the Tailscale install step** (from the menu or CLI):
-```bash
-homecloud install  # step 5: Tailscale
-```
-
-If you set an auth key, the Pi authenticates automatically. If not, the step
-prints a login URL — open it in your browser to authorize the Pi.
-
-**3. Install Tailscale on your devices:**
-- Download from <https://tailscale.com/download>
-- Available for iOS, Android, macOS, Windows, Linux
-- Log in with the same account you used for the Pi
-
-**4. Access Nextcloud over Tailscale:**
-```
-https://<pi-tailscale-ip>       # Nextcloud
-https://<pi-tailscale-ip>:8080   # AIO admin panel
-```
-Find the Pi's Tailscale IP with `tailscale ip -4` on the Pi, or in the
-[Tailscale admin console](https://login.tailscale.com/admin/machines).
-
-> **Why Tailscale over port forwarding?**
-> - Works with DS-Lite / CGNAT (no real public IPv4)
-> - No upload bandwidth limits (unlike Cloudflare Tunnel's 100 MB cap)
-> - No request timeout (unlike Cloudflare Tunnel's 100s) — Talk video calls work
-> - Encrypted end-to-end (WireGuard)
-> - Free for personal use (up to 100 devices)
->
-> **Downside:** every device that accesses Nextcloud needs the Tailscale client
-> installed. It's not a public URL you can share with anyone.
-
-### Step 6: Complete AIO setup (one-time, in your browser)
-
-After the installer finishes, Nextcloud isn't running yet — you need to open
-the AIO panel and click through a few screens.
-
-**1. Open the AIO panel:**
-```
-https://<pi-tailscale-ip>:8080
-```
-Or on your LAN: `https://<pi-ip>:8080`
-
-Accept the self-signed certificate warning in your browser.
-
-**2. Enter your domain — validation is auto-skipped:**
-
-AIO requires a domain to be entered, but it also tries to validate that your
-Pi is reachable from the internet on port 443. The installer launches AIO
-with `SKIP_DOMAIN_VALIDATION=true`, so **validation is skipped automatically**
-— no manual steps needed. This works even on DS-Lite/CGNAT (no real public IPv4).
-
-The domain is just used internally by AIO for config (TLS cert generation,
-Coturn, etc.). You don't actually access Nextcloud through it — you use the
-Tailscale IP.
-
-Just enter your DuckDNS domain (e.g. `omid.duckdns.org`) and submit.
-
-**3. Pick optional containers:**
-| Container | Recommended? | Why |
-| :-- | :--: | :-- |
-| Nextcloud (core) | ✅ always | The actual cloud |
-| Nextcloud Talk | ✅ yes | Video/audio calls (works over Tailscale) |
-| Collabora | optional | Online document editing (LibreOffice) |
-| ClamAV | ❌ no | Antivirus — heavy, eats RAM on a Pi |
-| Fulltextsearch | ❌ no | Elasticsearch — heavy on Pi |
-| Imaginary | optional | Image processing/thumbnailing |
-
-**4. Set an admin password** — this is your Nextcloud `admin` login.
-Use something strong and store it in a password manager.
-
-**5. Click "Start containers"** — AIO pulls Docker images and boots everything.
-This takes 5–10 minutes on a Pi. You'll see progress in the panel.
-
-**6. When all containers show ✅**, your Nextcloud is live. Access it via:
-
-| Where you are | URL |
-| :-- | :-- |
-| Over Tailscale | `https://<pi-tailscale-ip>` |
-| Same LAN | `https://<pi-ip>` |
-| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
-
-Log in with username `admin` and the password you set in step 4.
-
-> **⚠️ You must open the AIO panel and complete these steps before
-> Nextcloud is usable.** The installer only launches the master container —
-> the actual Nextcloud instance, database, Redis, etc. are started from
-> inside the AIO panel.
-
-### Step 7: Access Nextcloud (daily use)
-
-Once AIO containers are running, pick the URL that matches where you are:
-
-| Where | URL |
-| :-- | :-- |
-| Same LAN | `https://<pi-ip>` |
-| Over Tailscale | `https://<pi-tailscale-ip>` |
-| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
-
-Log in with the admin username (`admin`) and the Nextcloud admin password from
-your config.
-
-### Updating homecloud itself
-
-There are two ways to update the homecloud app:
-
-**From the menu:** Main menu → 🔄 Update → "homecloud"
-
-**From the command line:**
-
-```bash
-# Check if updates are available
-homecloud update --check
-
-# Apply updates
-homecloud update
-```
-
-This runs `git pull` in `/opt/homecloud` and reinstalls the package via the
-virtualenv's pip. Re-run `homecloud` to use the new version.
-
-### Updating all components
-
-The Update screen and CLI can update **all** updatable components, each with a
-confirmation prompt:
-
-| Component | What it does |
-| :-- | :-- |
-| 📦 homecloud | `git pull` + `pip install` |
-| ☁️ Nextcloud | `occ update:check` → maintenance mode → `occ upgrade` → maintenance mode off |
-| 🤖 Bot deps | `pip install --upgrade` python-telegram-bot/APScheduler/requests + restart |
-| 🔐 restic | `apt-get install --only-upgrade restic` |
-| 📁 Samba | `apt-get install --only-upgrade samba` + restart smbd |
-
-**From the menu:** Main menu → 🔄 Update → "Update all"
-
-**From the command line:**
-
-```bash
-# Update everything (prompts for each component)
-homecloud update --all
-
-# Update everything, skip prompts (unattended)
-homecloud update --all -y
-```
+Once the installer finishes, Nextcloud isn't running yet — you need to set up
+external access and click through the AIO panel. See
+[🌐 Network & External Access](#-network--external-access) for the full guide
+(port forwarding, Tailscale, and the one-time AIO browser setup).
 
 ---
 
-## � Gathering Config Values
+## 🔧 Configuration
 
 The installer asks for a handful of values before it can run. Here's where to
 find each one and what format it expects.
@@ -324,8 +177,7 @@ The installer uses this for:
 
 > Make sure your router forwards ports **80** and **443** to the Pi's local IP.
 > For Talk video calls, also forward **3478** and **5349** (TCP+UDP). See
-> [Step 4: Port forwarding](#step-4-port-forwarding-on-your-router) for the
-> full table.
+> [Port forwarding](#step-1-port-forwarding-on-your-router) for the full table.
 
 ### AWS S3 credentials (`aws_access_key_id`, `aws_secret_access_key`)
 
@@ -349,8 +201,8 @@ The installer uses this for:
    to avoid extra costs.
 
 After creating the bucket, add the **Glacier Deep Archive lifecycle rule**
-described in [💰 Cost Estimate](#-cost-estimate-s3-glacier-deep-archive-eu-central-1)
-so backups age into cheap storage automatically.
+described in [💰 Backups & Costs](#-backups--costs) so backups age into cheap
+storage automatically.
 
 ### restic password (`restic_password`)
 
@@ -418,7 +270,9 @@ schedules (backup at 3 AM, daily report at 8 AM).
 
 ---
 
-## �📦 What gets installed (in order)
+## 📦 Installation Steps
+
+What gets installed, in order:
 
 | # | Step | Description |
 | :-: | :-- | :-- |
@@ -439,7 +293,199 @@ tracked via marker files in `/etc/homecloud/state/`.
 
 ---
 
-## 🤖 Telegram Bot Commands
+## 🌐 Network & External Access
+
+After the installer finishes, you need to expose Nextcloud so you can reach it
+from outside your LAN, then complete the one-time AIO setup in your browser.
+
+### Step 1: Port forwarding (on your router)
+
+> **⚠️ DS-Lite / CGNAT check first!** Many ISPs (Telekom, Vodafone, 1&1 in
+> Germany) assign a shared IPv4 via DS-Lite — you have **no real public IPv4**
+> and port forwarding **will not work**. Test from a phone on mobile data:
+> ```
+> curl -s https://api.ipify.org  # your public IPv4
+> nc -z -w5 <that-ip> 443 && echo OPEN || echo BLOCKED
+> ```
+> If blocked, skip port forwarding and use **Tailscale** (Step 2) instead.
+
+**If you have a real public IPv4**, forward these ports to your Pi's local IP
+(find it with `hostname -I` on the Pi):
+
+| Port | Protocol | Purpose |
+| :--: | :------: | :------ |
+| **80** | TCP | Let's Encrypt HTTP challenge (for TLS certs) |
+| **443** | TCP | Nextcloud HTTPS (daily use) |
+| **443** | UDP | HTTP/3 (optional, faster connections) |
+| **3478** | TCP + UDP | Talk TURN server (video calls) |
+| **5349** | TCP + UDP | Talk TURN over TLS (video calls) |
+
+### Step 2: Install Tailscale (external access, bypasses DS-Lite)
+
+Tailscale creates a WireGuard mesh VPN. Every device with the Tailscale client
+installed gets a stable `100.x.y.z` IP and can reach the Pi — **no port
+forwarding needed**. This is the recommended way to expose Nextcloud when your
+ISP uses DS-Lite / CGNAT (no real public IPv4).
+
+**1. Get a Tailscale auth key (optional but recommended for non-interactive setup):**
+- Sign up at <https://tailscale.com> (free for personal use, up to 100 devices)
+- Go to **Settings → Keys → Generate auth key**
+- Copy the key (starts with `tskey-...`)
+- Set it in your config: `TAILSCALE_AUTH_KEY=tskey-...`
+
+**2. Run the Tailscale install step** (from the menu or CLI):
+```bash
+homecloud install  # step 5: Tailscale
+```
+
+If you set an auth key, the Pi authenticates automatically. If not, the step
+prints a login URL — open it in your browser to authorize the Pi.
+
+**3. Install Tailscale on your devices:**
+- Download from <https://tailscale.com/download>
+- Available for iOS, Android, macOS, Windows, Linux
+- Log in with the same account you used for the Pi
+
+**4. Access Nextcloud over Tailscale:**
+```
+https://<pi-tailscale-ip>       # Nextcloud
+https://<pi-tailscale-ip>:8080   # AIO admin panel
+```
+Find the Pi's Tailscale IP with `tailscale ip -4` on the Pi, or in the
+[Tailscale admin console](https://login.tailscale.com/admin/machines).
+
+> **Why Tailscale over port forwarding?**
+> - Works with DS-Lite / CGNAT (no real public IPv4)
+> - No upload bandwidth limits (unlike Cloudflare Tunnel's 100 MB cap)
+> - No request timeout (unlike Cloudflare Tunnel's 100s) — Talk video calls work
+> - Encrypted end-to-end (WireGuard)
+> - Free for personal use (up to 100 devices)
+>
+> **Downside:** every device that accesses Nextcloud needs the Tailscale client
+> installed. It's not a public URL you can share with anyone.
+
+### Step 3: Complete AIO setup (one-time, in your browser)
+
+After the installer finishes, Nextcloud isn't running yet — you need to open
+the AIO panel and click through a few screens.
+
+**1. Open the AIO panel:**
+```
+https://<pi-tailscale-ip>:8080
+```
+Or on your LAN: `https://<pi-ip>:8080`
+
+Accept the self-signed certificate warning in your browser.
+
+**2. Enter your domain — validation is auto-skipped:**
+
+AIO requires a domain to be entered, but it also tries to validate that your
+Pi is reachable from the internet on port 443. The installer launches AIO
+with `SKIP_DOMAIN_VALIDATION=true`, so **validation is skipped automatically**
+— no manual steps needed. This works even on DS-Lite/CGNAT (no real public IPv4).
+
+The domain is just used internally by AIO for config (TLS cert generation,
+Coturn, etc.). You don't actually access Nextcloud through it — you use the
+Tailscale IP.
+
+Just enter your DuckDNS domain (e.g. `omid.duckdns.org`) and submit.
+
+**3. Pick optional containers:**
+| Container | Recommended? | Why |
+| :-- | :--: | :-- |
+| Nextcloud (core) | ✅ always | The actual cloud |
+| Nextcloud Talk | ✅ yes | Video/audio calls (works over Tailscale) |
+| Collabora | optional | Online document editing (LibreOffice) |
+| ClamAV | ❌ no | Antivirus — heavy, eats RAM on a Pi |
+| Fulltextsearch | ❌ no | Elasticsearch — heavy on Pi |
+| Imaginary | optional | Image processing/thumbnailing |
+
+**4. Set an admin password** — this is your Nextcloud `admin` login.
+Use something strong and store it in a password manager.
+
+**5. Click "Start containers"** — AIO pulls Docker images and boots everything.
+This takes 5–10 minutes on a Pi. You'll see progress in the panel.
+
+**6. When all containers show ✅**, your Nextcloud is live. Access it via:
+
+| Where you are | URL |
+| :-- | :-- |
+| Over Tailscale | `https://<pi-tailscale-ip>` |
+| Same LAN | `https://<pi-ip>` |
+| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
+
+Log in with username `admin` and the password you set in step 4.
+
+> **⚠️ You must open the AIO panel and complete these steps before
+> Nextcloud is usable.** The installer only launches the master container —
+> the actual Nextcloud instance, database, Redis, etc. are started from
+> inside the AIO panel.
+
+### Step 4: Access Nextcloud (daily use)
+
+Once AIO containers are running, pick the URL that matches where you are:
+
+| Where | URL |
+| :-- | :-- |
+| Same LAN | `https://<pi-ip>` |
+| Over Tailscale | `https://<pi-tailscale-ip>` |
+| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
+
+Log in with the admin username (`admin`) and the Nextcloud admin password from
+your config.
+
+---
+
+## 💾 Accessing Your Files
+
+Your SSD is mounted at `/mnt/ncdata` with this layout:
+
+| Path | Purpose | Owner |
+| :-- | :-- | :-- |
+| `/mnt/ncdata/nextcloud/` | Nextcloud's internal data (managed by NC — don't edit directly) | www-data (uid 33) |
+| `/mnt/ncdata/files/` | **Samba share** — your "drop any file here" folder | your user (uid 1000) |
+| `/mnt/ncdata/borg-backup/` | Local borg backup snapshots | root |
+
+### Samba (recommended)
+
+Already installed if you ran the Samba step. This gives you read/write access to `/mnt/ncdata/files/` from any device on your LAN.
+
+**macOS:** Finder → Go → Connect to Server (⌘K) → `smb://<pi-ip>/NAS Files`
+
+**Linux:** `smbclient //<pi-ip>/"NAS Files" -U <samba-user>`
+
+**Windows:** File Explorer → `\\<pi-ip>\NAS Files`
+
+### SSH / SCP
+
+```bash
+# Browse the SSD
+ssh pi@<pi-ip>
+ls -la /mnt/ncdata/files/
+
+# Copy a file off the SSD
+scp pi@<pi-ip>:/mnt/ncdata/files/somefile.pdf ./
+
+# Copy a file onto the SSD
+scp ./photo.jpg pi@<pi-ip>:/mnt/ncdata/files/
+```
+
+> You need `sudo` to access `/mnt/ncdata/nextcloud/` since it's owned by www-data.
+
+### SFTP (GUI clients)
+
+Use FileZilla, Cyberduck, WinSCP, etc. — connect to `<pi-ip>` with your SSH credentials, then navigate to `/mnt/ncdata/`.
+
+### ⚠️ Don't manually edit `/mnt/ncdata/nextcloud/`
+
+That folder is Nextcloud's internal database-tracked storage. Adding or removing files there directly will confuse Nextcloud. Instead:
+
+- **To make files visible in Nextcloud:** put them in `/mnt/ncdata/files/` (the Samba share), then in the Nextcloud web UI go to **Admin → External Storage → Add storage → Local** and set the path to `/mnt/ncdata/files`. That folder will then appear alongside your other Nextcloud folders.
+- **Or** upload via Nextcloud's web UI or desktop sync client as usual.
+
+---
+
+## 🤖 Telegram Bot
 
 | Command | What you get |
 | :-- | :-- |
@@ -544,43 +590,13 @@ snapshot abc12def saved
 
 ---
 
-## 🔐 Secrets & Recovery
+## 💰 Backups & Costs
 
-All secrets live in `/etc/homecloud/.env` (permissions `0600`, root-owned):
+Nightly restic backups go to **S3 Glacier Deep Archive** (eu-central-1).
+Block-level deduplication means you only pay for ~your actual data size, not
+`200GB × N nights`.
 
-- DuckDNS token
-- AWS access key + secret
-- S3 bucket name
-- restic repository password
-- Telegram bot token + chat ID
-- Nextcloud admin password
-- Samba password
-
-### Export a recovery bundle
-
-```bash
-homecloud secrets export -o ~/homecloud-recovery-bundle.json
-```
-
-This writes a JSON file with **all** secrets + config + install state. Copy it
-to a USB stick or password manager, then delete it from the Pi.
-
-### Import on a fresh Pi
-
-If your SD card dies and you re-flash:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/omidizadi/home-cloud/main/install.sh | sudo bash
-# ...then:
-homecloud secrets import /path/to/homecloud-recovery-bundle.json
-homecloud
-```
-
-Your SSD data is untouched — just re-run install and it picks up where you left off.
-
----
-
-## 💰 Cost Estimate (S3 Glacier Deep Archive, eu-central-1)
+### Cost estimate
 
 | Item | Cost |
 | :-- | :-- |
@@ -619,7 +635,43 @@ In the AWS Console: **S3** → your bucket → **Management** tab →
 
 > That's it. New nightly backup chunks land in S3 Standard, then within ~24 h
 > AWS moves them to Glacier Deep Archive automatically. No further action
-   needed — restic is unaware of the transition and keeps working normally.
+> needed — restic is unaware of the transition and keeps working normally.
+
+---
+
+## 🔐 Secrets & Recovery
+
+All secrets live in `/etc/homecloud/.env` (permissions `0600`, root-owned):
+
+- DuckDNS token
+- AWS access key + secret
+- S3 bucket name
+- restic repository password
+- Telegram bot token + chat ID
+- Nextcloud admin password
+- Samba password
+
+### Export a recovery bundle
+
+```bash
+homecloud secrets export -o ~/homecloud-recovery-bundle.json
+```
+
+This writes a JSON file with **all** secrets + config + install state. Copy it
+to a USB stick or password manager, then delete it from the Pi.
+
+### Import on a fresh Pi
+
+If your SD card dies and you re-flash:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/omidizadi/home-cloud/main/install.sh | sudo bash
+# ...then:
+homecloud secrets import /path/to/homecloud-recovery-bundle.json
+homecloud
+```
+
+Your SSD data is untouched — just re-run install and it picks up where you left off.
 
 ---
 
@@ -644,6 +696,65 @@ Everything is wired to survive a reboot:
 
 For full peace of mind, add a small UPS (~€60, e.g. APC Back-UPS 700) with
 `apcupsd` for graceful shutdown on power loss.
+
+---
+
+## ⬆️ Updating
+
+### Update homecloud itself
+
+**From the menu:** Main menu → 🔄 Update → "homecloud"
+
+**From the command line:**
+
+```bash
+# Check if updates are available
+homecloud update --check
+
+# Apply updates
+homecloud update
+```
+
+This runs `git pull` in `/opt/homecloud` and reinstalls the package via the
+virtualenv's pip. Re-run `homecloud` to use the new version.
+
+### Update all components
+
+The Update screen and CLI can update **all** updatable components, each with a
+confirmation prompt:
+
+| Component | What it does |
+| :-- | :-- |
+| 📦 homecloud | `git pull` + `pip install` |
+| ☁️ Nextcloud | `occ update:check` → maintenance mode → `occ upgrade` → maintenance mode off |
+| 🤖 Bot deps | `pip install --upgrade` python-telegram-bot/APScheduler/requests + restart |
+| 🔐 restic | `apt-get install --only-upgrade restic` |
+| 📁 Samba | `apt-get install --only-upgrade samba` + restart smbd |
+
+**From the menu:** Main menu → 🔄 Update → "Update all"
+
+**From the command line:**
+
+```bash
+# Update everything (prompts for each component)
+homecloud update --all
+
+# Update everything, skip prompts (unattended)
+homecloud update --all -y
+```
+
+---
+
+## ⚠️ Troubleshooting
+
+| Problem | Fix |
+| :-- | :-- |
+| AIO admin panel not reachable on :8080 | `docker logs nextcloud-aio-mastercontainer` |
+| Nextcloud Talk calls fail across networks | Verify port 3478 TCP+UDP is forwarded on your router |
+| Backup fails with S3 error | Check AWS credentials in `/etc/homecloud/.env` |
+| Bot not responding | `systemctl status ncbot` + `journalctl -u ncbot -f` |
+| SSD not mounted after reboot | Check `/etc/fstab` + `journalctl -b -u mnt-ncdata.mount` |
+| Docker started but Nextcloud on SD card | The hardening step prevents this; re-run Repair |
 
 ---
 
@@ -696,68 +807,6 @@ home-cloud/
 │   └── utils/                     # shell, logging, state, checks
 └── templates/                     # Reference config files
 ```
-
----
-
-## 💾 Accessing the SSD Outside Nextcloud
-
-Your SSD is mounted at `/mnt/ncdata` with this layout:
-
-| Path | Purpose | Owner |
-| :-- | :-- | :-- |
-| `/mnt/ncdata/nextcloud/` | Nextcloud's internal data (managed by NC — don't edit directly) | www-data (uid 33) |
-| `/mnt/ncdata/files/` | **Samba share** — your "drop any file here" folder | your user (uid 1000) |
-| `/mnt/ncdata/borg-backup/` | Local borg backup snapshots | root |
-
-### Samba (recommended)
-
-Already installed if you ran the Samba step. This gives you read/write access to `/mnt/ncdata/files/` from any device on your LAN.
-
-**macOS:** Finder → Go → Connect to Server (⌘K) → `smb://<pi-ip>/NAS Files`
-
-**Linux:** `smbclient //<pi-ip>/"NAS Files" -U <samba-user>`
-
-**Windows:** File Explorer → `\\<pi-ip>\NAS Files`
-
-### SSH / SCP
-
-```bash
-# Browse the SSD
-ssh pi@<pi-ip>
-ls -la /mnt/ncdata/files/
-
-# Copy a file off the SSD
-scp pi@<pi-ip>:/mnt/ncdata/files/somefile.pdf ./
-
-# Copy a file onto the SSD
-scp ./photo.jpg pi@<pi-ip>:/mnt/ncdata/files/
-```
-
-> You need `sudo` to access `/mnt/ncdata/nextcloud/` since it's owned by www-data.
-
-### SFTP (GUI clients)
-
-Use FileZilla, Cyberduck, WinSCP, etc. — connect to `<pi-ip>` with your SSH credentials, then navigate to `/mnt/ncdata/`.
-
-### ⚠️ Don't manually edit `/mnt/ncdata/nextcloud/`
-
-That folder is Nextcloud's internal database-tracked storage. Adding or removing files there directly will confuse Nextcloud. Instead:
-
-- **To make files visible in Nextcloud:** put them in `/mnt/ncdata/files/` (the Samba share), then in the Nextcloud web UI go to **Admin → External Storage → Add storage → Local** and set the path to `/mnt/ncdata/files`. That folder will then appear alongside your other Nextcloud folders.
-- **Or** upload via Nextcloud's web UI or desktop sync client as usual.
-
----
-
-## ⚠️ Troubleshooting
-
-| Problem | Fix |
-| :-- | :-- |
-| AIO admin panel not reachable on :8080 | `docker logs nextcloud-aio-mastercontainer` |
-| Nextcloud Talk calls fail across networks | Verify port 3478 TCP+UDP is forwarded on your router |
-| Backup fails with S3 error | Check AWS credentials in `/etc/homecloud/.env` |
-| Bot not responding | `systemctl status ncbot` + `journalctl -u ncbot -f` |
-| SSD not mounted after reboot | Check `/etc/fstab` + `journalctl -b -u mnt-ncdata.mount` |
-| Docker started but Nextcloud on SD card | The hardening step prevents this; re-run Repair |
 
 ---
 

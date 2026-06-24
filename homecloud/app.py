@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import Config, export_recovery_bundle, generate_password, load_config, save_config, validate
-from .constants import CONFIG_DIR, INSTALL_DIR, LOG_DIR, STATE_DIR, VENV_DIR
+from .constants import CONFIG_DIR, INSTALL_DIR, LOG_DIR, NCDATA_MOUNT, STATE_DIR, VENV_DIR
 from .services import container_status, unit_status
 from .steps import ALL_STEPS
 from .utils import has_sudo, is_pi5, is_root, log, run, setup_logging, which
@@ -308,6 +308,115 @@ class HomeCloudApp:
                 _ok(f"{label} removed")
             else:
                 _fail(f"{label}: {r.stderr.strip()}")
+
+    def menu_ssd(self) -> None:
+        """Safely unplug / re-plug the external SSD."""
+        while True:
+            _header("💽 SSD: Plug / Unplug")
+            # Show current mount state
+            mounted = run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok
+            state = "mounted ✅" if mounted else "not mounted ❌"
+            print(f"  Current state: /mnt/ncdata is {state}")
+            print()
+            print("  1. ⏏️  Safely unplug SSD (stop services + unmount)")
+            print("  2. 🔌 Plug in SSD (mount + restart services)")
+            print("  0. Back")
+            choice = input("\nChoice: ").strip()
+            if choice == "1":
+                self._ssd_unplug()
+            elif choice == "2":
+                self._ssd_plug()
+            elif choice == "0":
+                return
+            else:
+                _fail("Invalid choice")
+
+    def _ssd_unplug(self) -> None:
+        """Stop Nextcloud + Docker, then unmount the SSD so it can be unplugged."""
+        _header("⏏️  Safely Unplug SSD")
+        if not run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
+            _info(f"{NCDATA_MOUNT} is not mounted — safe to unplug now.")
+            _pause()
+            return
+        print("This will:")
+        print(f"  1. Stop the Nextcloud AIO master container")
+        print("  2. Stop Docker (all containers)")
+        print(f"  3. Unmount {NCDATA_MOUNT}")
+        print("  4. Tell you it's safe to physically unplug the drive")
+        print()
+        if not _confirm("Proceed?"):
+            return
+        if self.dry_run:
+            _info("dry-run: would stop docker + unmount")
+            _pause()
+            return
+
+        _info("Stopping Nextcloud AIO master container...")
+        run("docker stop nextcloud-aio-mastercontainer", sudo=True, capture=True)
+        _info("Stopping Docker...")
+        run("systemctl stop docker", sudo=True, capture=True)
+        _info(f"Unmounting {NCDATA_MOUNT}...")
+        r = run(f"umount {NCDATA_MOUNT}", sudo=True, capture=True)
+        if not r.ok:
+            _fail(f"umount failed: {r.stderr.strip()}")
+            _info("Docker is stopped. You can retry after freeing handles:")
+            print(f"  sudo lsof +f -- {NCDATA_MOUNT}")
+            _pause()
+            return
+        # Confirm
+        if run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
+            _fail("still mounted — do NOT unplug. Investigate with lsof.")
+            _pause()
+            return
+        _ok("Safe to unplug the SSD now. 🔌✨")
+        _info("When you plug it back in, the udev rule auto-recovers,")
+        _info("or use menu option 8 → Plug in SSD to do it manually.")
+        _pause()
+
+    def _ssd_plug(self) -> None:
+        """Mount the SSD and restart Docker + Nextcloud AIO."""
+        _header("🔌 Plug in SSD")
+        if run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
+            _ok(f"{NCDATA_MOUNT} is already mounted.")
+            _info("Restarting services to be safe...")
+        else:
+            if self.dry_run:
+                _info("dry-run: would mount + restart services")
+                _pause()
+                return
+            _info("Waiting for device to appear...")
+            # Try to resolve the device from the fstab LABEL
+            label = self.cfg.ssd_label or "ncdata"
+            dev = run(f"blkid -L {label}", capture=True).stdout.strip()
+            if not dev:
+                _fail(f"No device found with LABEL={label}.")
+                _info("Make sure the SSD is physically plugged in.")
+                _pause()
+                return
+            _info(f"Found device: {dev}")
+            _info("Running fsck (read-only check)...")
+            run(f"fsck -n {dev}", sudo=True, capture=True)
+            _info(f"Mounting {NCDATA_MOUNT}...")
+            r = run(f"mount {NCDATA_MOUNT}", sudo=True, capture=True)
+            if not r.ok:
+                # Fallback to mount -a in case the fstab uses a different spec
+                r = run("mount -a", sudo=True, capture=True)
+            if not run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
+                _fail(f"mount failed: {r.stderr.strip()}")
+                _pause()
+                return
+            _ok("Mounted.")
+
+        if self.dry_run:
+            _pause()
+            return
+        _info("Restarting Docker...")
+        run("systemctl restart docker", sudo=True, capture=True)
+        _info("Restarting Nextcloud AIO master container...")
+        run("docker restart nextcloud-aio-mastercontainer", sudo=True, capture=True)
+        _ok("SSD is back online. Services are restarting.")
+        _info("Check progress with: journalctl -u ncdata-replug.service -f")
+        _pause()
 
     def menu_config(self) -> None:
         _header("⚙️ Edit Config")
@@ -610,6 +719,7 @@ class HomeCloudApp:
             print("  5. 🗑️  Uninstall (full)")
             print("  6. ⚙️  Edit Config")
             print("  7. 🔐  Secrets: Export Recovery Bundle")
+            print("  8. 💽  SSD: Plug / Unplug")
             print("  0. ❌  Quit")
             print()
             try:
@@ -626,6 +736,7 @@ class HomeCloudApp:
                 "5": self.menu_uninstall,
                 "6": self.menu_config,
                 "7": self.export_recovery,
+                "8": self.menu_ssd,
             }
             if choice == "0":
                 print("Bye 👋")
