@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..constants import BOT_SERVICE as BOT_SERVICE
 from ..constants import DOCKER_SSD_OVERRIDE
-from ..utils import Result, log, run, write_file_sudo
+from ..utils import Result, file_exists_sudo, log, run, write_file_sudo
 
 # ── systemd ───────────────────────────────────────────────────────────────────
 
@@ -64,6 +64,57 @@ def write_docker_ssd_dependency(mount_point: str = "/mnt/ncdata", *, dry_run: bo
         f"Requires={unit}.mount\n"
     )
     write_unit(DOCKER_SSD_OVERRIDE, content, dry_run=dry_run)
+    daemon_reload(dry_run=dry_run)
+
+
+def install_replug_support(ssd_label: str = "ncdata", *, dry_run: bool = False) -> list[str]:
+    """Install udev rule + systemd service + shell script for SSD hot-replug.
+
+    Returns a list of issues encountered (empty = success).
+    """
+    from ..constants import REPLUG_SCRIPT, REPLUG_SERVICE, REPLUG_UDEV_RULE, TEMPLATES_DIR
+
+    issues: list[str] = []
+
+    # 1. udev rule
+    udev_tpl = (TEMPLATES_DIR / "99-ncdata.rules").read_text()
+    udev_content = udev_tpl.replace("{{SSD_LABEL}}", ssd_label)
+    if dry_run:
+        log.info("[dry-run] would write udev rule: %s", REPLUG_UDEV_RULE)
+    else:
+        write_file_sudo(REPLUG_UDEV_RULE, udev_content, mode=0o644)
+        run("udevadm control --reload-rules", sudo=True, dry_run=dry_run)
+        run("udevadm trigger", sudo=True, dry_run=dry_run)
+    log.info("udev rule installed: %s", REPLUG_UDEV_RULE)
+
+    # 2. systemd service
+    svc_tpl = (TEMPLATES_DIR / "ncdata-replug.service").read_text()
+    if dry_run:
+        log.info("[dry-run] would write service: %s", REPLUG_SERVICE)
+    else:
+        write_file_sudo(REPLUG_SERVICE, svc_tpl, mode=0o644)
+
+    # 3. shell script
+    script_src = (TEMPLATES_DIR / "homecloud-replug.sh").read_text()
+    if dry_run:
+        log.info("[dry-run] would write script: %s", REPLUG_SCRIPT)
+    else:
+        write_file_sudo(REPLUG_SCRIPT, script_src, mode=0o755)
+
+    # 4. reload
+    daemon_reload(dry_run=dry_run)
+    return issues
+
+
+def remove_replug_support(*, dry_run: bool = False) -> None:
+    """Remove udev rule, systemd service, and shell script for SSD hot-replug."""
+    from ..constants import REPLUG_SCRIPT, REPLUG_SERVICE, REPLUG_UDEV_RULE
+
+    for path in [REPLUG_UDEV_RULE, REPLUG_SERVICE, REPLUG_SCRIPT]:
+        if file_exists_sudo(path):
+            run(f"rm -f {path}", sudo=True, dry_run=dry_run)
+            log.info("removed replug file: %s", path)
+    run("udevadm control --reload-rules", sudo=True, dry_run=dry_run)
     daemon_reload(dry_run=dry_run)
 
 

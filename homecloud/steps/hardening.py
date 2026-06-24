@@ -1,9 +1,11 @@
-"""Step 10: Hardening — reboot survival, fsck, service checks."""
+"""Step 10: Hardening — reboot survival, fsck, service checks, SSD hot-replug."""
 
 from __future__ import annotations
 
 from ..services import (
     daemon_reload,
+    install_replug_support,
+    remove_replug_support,
     unit_enabled,
     unit_status,
     write_docker_ssd_dependency,
@@ -44,7 +46,14 @@ class HardeningStep(Step):
                 issues.append(f"{svc} is not enabled for boot")
                 run(f"systemctl enable {svc}", sudo=True, dry_run=self.dry_run)
 
-        # 4. Optional: apcupsd (UPS) — just check, don't install
+        # 4. SSD hot-replug support (udev + systemd service)
+        self.log("Installing SSD hot-replug support...")
+        replug_issues = install_replug_support(
+            ssd_label=self.cfg.ssd_label, dry_run=self.dry_run
+        )
+        issues.extend(replug_issues)
+
+        # 5. Optional: apcupsd (UPS) — just check, don't install
         if not self.dry_run and unit_status("apcupsd") == "not-found":
             self.log("No UPS daemon (apcupsd) detected — recommended for power-cut protection")
 
@@ -67,16 +76,23 @@ class HardeningStep(Step):
             checks.append(f"{svc}: {'✅' if ok else '❌'}")
             if not ok:
                 all_ok = False
+        # Check replug components
+        from ..constants import REPLUG_SCRIPT, REPLUG_SERVICE, REPLUG_UDEV_RULE
+        for label, path in [("udev", REPLUG_UDEV_RULE), ("replug-svc", REPLUG_SERVICE), ("replug-sh", REPLUG_SCRIPT)]:
+            ok = file_exists_sudo(path)
+            checks.append(f"{label}: {'✅' if ok else '❌'}")
+            if not ok:
+                all_ok = False
         return StepResult(self.name, all_ok, " | ".join(checks))
 
     def repair(self) -> StepResult:
         return self.run()
 
     def undo(self) -> StepResult:
-        self.log("Conservative undo: removing Docker→SSD override only")
+        self.log("Conservative undo: removing Docker→SSD override and replug support")
         from ..constants import DOCKER_SSD_OVERRIDE
         if not self.dry_run and file_exists_sudo(DOCKER_SSD_OVERRIDE):
             run(f"sudo -n rm -f {DOCKER_SSD_OVERRIDE}", capture=True)
-            daemon_reload(dry_run=self.dry_run)
+        remove_replug_support(dry_run=self.dry_run)
         self.mark_undone()
-        return StepResult(self.name, True, "Hardening override removed")
+        return StepResult(self.name, True, "Hardening override and replug support removed")

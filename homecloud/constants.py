@@ -25,6 +25,9 @@ BOT_SCRIPT = Path("/opt/ncbot.py")
 BOT_VENV = Path("/opt/ncbot-env")
 BOT_SERVICE = Path("/etc/systemd/system/ncbot.service")
 DOCKER_SSD_OVERRIDE = Path("/etc/systemd/system/docker.service.d/wait-for-ssd.conf")
+REPLUG_UDEV_RULE = Path("/etc/udev/rules.d/99-ncdata.rules")
+REPLUG_SERVICE = Path("/etc/systemd/system/ncdata-replug.service")
+REPLUG_SCRIPT = Path("/usr/local/bin/homecloud-replug.sh")
 
 # Container names
 AIO_MASTER_CONTAINER = "nextcloud-aio-mastercontainer"
