@@ -52,10 +52,12 @@ class DuckDnsStep(Step):
         return StepResult(
             self.name, True,
             f"DuckDNS configured for {domain}.duckdns.org",
-            "DuckDNS provides the domain + TLS certs for Nextcloud.\n"
+            "DuckDNS provides a hostname for your home IP.\n"
             "If your ISP uses DS-Lite/CGNAT (no real public IPv4),\n"
-            "port forwarding won't work — use Tailscale for external access.\n"
-            "DuckDNS is still useful for the Let's Encrypt cert via AIO.",
+            "port forwarding won't work — use Tailscale for Nextcloud access.\n"
+            "Note: DuckDNS does NOT get Nextcloud its TLS cert on CGNAT —\n"
+            "AIO's Let's Encrypt uses TLS-ALPN-01 on :443, which needs a\n"
+            "reachable public IPv4. Tailscale Serve issues the cert instead.",
         )
 
     def _read_log(self) -> str:

@@ -36,6 +36,9 @@ AIO_NEXTCLOUD_CONTAINER = "nextcloud-aio-nextcloud"
 
 # Ports
 AIO_ADMIN_PORT = 8080
+# Port AIO's Apache container listens on when running behind a reverse proxy
+# (Tailscale Serve). AIO's built-in Let's Encrypt is disabled in this mode.
+AIO_APACHE_PORT = 11000
 NEXTCLOUD_HTTPS_PORT = 443
 NEXTCLOUD_HTTP_PORT = 80
 TURN_PORT = 3478

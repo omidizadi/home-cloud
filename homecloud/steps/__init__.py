@@ -16,9 +16,9 @@ from .wifi import WifiStep
 ALL_STEPS = [
     SsdStep,
     DockerStep,
+    TailscaleStep,
     NextcloudAioStep,
     DuckDnsStep,
-    TailscaleStep,
     CoturnStep,
     SambaStep,
     WifiStep,
