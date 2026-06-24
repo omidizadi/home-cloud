@@ -179,28 +179,24 @@ the AIO panel and click through a few screens.
 
 **1. Open the AIO panel:**
 ```
-https://<pi-ip>:8080
-```
-Or over Tailscale (if installed):
-```
 https://<pi-tailscale-ip>:8080
 ```
+Or on your LAN: `https://<pi-ip>:8080`
+
 Accept the self-signed certificate warning in your browser.
 
-**2. Enter your domain:**
-Type your full DuckDNS domain (e.g. `omid.duckdns.org`) in the domain field
-and submit. AIO validates that:
-- Port 443 is open and forwarded to your Pi
-- The DNS A record points to your public IP
+**2. Enter your domain — validation is auto-skipped:**
 
-> **If validation fails (common with DS-Lite):** skip it. SSH into the Pi and run:
-> ```bash
-> sudo docker exec nextcloud-aio-mastercontainer \
->   touch /mnt/docker-aio-config/secret/danger-skip-domain-validation
-> sudo docker restart nextcloud-aio-mastercontainer
-> ```
-> Then reopen the AIO panel and enter the domain — it'll accept it without
-> checking. You can still use Nextcloud over Tailscale or LAN.
+AIO requires a domain to be entered, but it also tries to validate that your
+Pi is reachable from the internet on port 443. The installer launches AIO
+with `SKIP_DOMAIN_VALIDATION=true`, so **validation is skipped automatically**
+— no manual steps needed. This works even on DS-Lite/CGNAT (no real public IPv4).
+
+The domain is just used internally by AIO for config (TLS cert generation,
+Coturn, etc.). You don't actually access Nextcloud through it — you use the
+Tailscale IP.
+
+Just enter your DuckDNS domain (e.g. `omid.duckdns.org`) and submit.
 
 **3. Pick optional containers:**
 | Container | Recommended? | Why |
@@ -222,8 +218,8 @@ This takes 5–10 minutes on a Pi. You'll see progress in the panel.
 
 | Where you are | URL |
 | :-- | :-- |
-| Same LAN | `https://<pi-ip>` |
 | Over Tailscale | `https://<pi-tailscale-ip>` |
+| Same LAN | `https://<pi-ip>` |
 | Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
 
 Log in with username `admin` and the password you set in step 4.

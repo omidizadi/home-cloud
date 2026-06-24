@@ -38,6 +38,7 @@ class NextcloudAioStep(Step):
             "--volume nextcloud_aio_mastercontainer:/mnt/docker-aio-config "
             "--volume /var/run/docker.sock:/var/run/docker.sock:ro "
             f'-e NEXTCLOUD_DATADIR="{NEXTCLOUD_DATADIR}" '
+            "-e SKIP_DOMAIN_VALIDATION=true "
             "ghcr.io/nextcloud-releases/all-in-one:latest"
         )
         self.log("Launching Nextcloud AIO master container...")
@@ -66,10 +67,8 @@ class NextcloudAioStep(Step):
             f"  1. Go to https://<pi-ip>:{AIO_ADMIN_PORT} (accept cert warning)\n"
             "     If Tailscale is set up: https://<pi-tailscale-ip>:8080\n"
             "  2. Enter your domain (e.g. yoursub.duckdns.org)\n"
-            "     If domain validation fails (DS-Lite/CGNAT), skip it:\n"
-            "       sudo docker exec nextcloud-aio-mastercontainer \\\n"
-            "         touch /mnt/docker-aio-config/secret/danger-skip-domain-validation\n"
-            "       sudo docker restart nextcloud-aio-mastercontainer\n"
+            "     Domain validation is auto-skipped (SKIP_DOMAIN_VALIDATION=true)\n"
+            "     so it works even on DS-Lite/CGNAT without port forwarding.\n"
             "  3. Pick optional containers: Talk ✅, Collabora optional, skip ClamAV/FTS\n"
             "  4. Set the admin password\n"
             "  5. Click 'Start containers' (takes 5-10 min on a Pi)\n"
