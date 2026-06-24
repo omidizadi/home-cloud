@@ -149,7 +149,120 @@ homecloud update --all -y
 
 ---
 
-## 📦 What gets installed (in order)
+## � Gathering Config Values
+
+The installer asks for a handful of values before it can run. Here's where to
+find each one and what format it expects.
+
+### SSD device (`ssd_device`)
+
+The block device path of your external SSD.
+
+```bash
+lsblk -d -o NAME,SIZE,MODEL,TRAN | grep -v mmcblk
+# NAME   SIZE   MODEL              TRAN
+# sda    4.6T   Samsung_T5         usb
+```
+
+Use the `/dev/` path, e.g. `/dev/sda`. If the SSD is brand new and unformatted,
+the installer will offer to format it (erasing all data). If it already has a
+filesystem, the installer mounts it as-is.
+
+> Tip: unplug the SSD, run `lsblk`, plug it back in, run `lsblk` again — the new
+> entry is your SSD.
+
+### DuckDNS domain + token (`duckdns_domain`, `duckdns_token`)
+
+1. Go to <https://www.duckdns.org> and sign in with GitHub/Google/Reddit.
+2. Add a subdomain (e.g. `omid`) — this becomes `omid.duckdns.org`.
+   Enter just the subdomain part (`omid`), not the full URL.
+3. Copy the long **token** shown at the top of the page — it's a UUID like
+   `a1b2c3d4-e5f6-7890-abcd-ef1234567890`.
+
+The installer uses this for:
+- Dynamic DNS updates (so `omid.duckdns.org` always points to your home IP)
+- Let's Encrypt TLS certificates for Nextcloud
+
+> Make sure your router forwards ports **80** and **443** to the Pi's local IP.
+
+### AWS S3 credentials (`aws_access_key_id`, `aws_secret_access_key`)
+
+1. Sign in to the **AWS Console** → **IAM** → **Users** → your user →
+   **Security credentials** → **Create access key**.
+2. Choose **Application running outside AWS** (or "Other").
+3. Copy the **Access key ID** (starts with `AKIA…`) and **Secret access key**.
+
+> Best practice: create a dedicated IAM user with only `AmazonS3FullAccess`
+> (or a scoped-down policy limited to your bucket) rather than using your root
+> account keys.
+
+### S3 bucket (`s3_bucket`)
+
+1. **AWS Console** → **S3** → **Create bucket**.
+2. Pick a globally-unique name (e.g. `omid-homecloud-backup`).
+3. **Region**: pick one close to you (e.g. `eu-central-1` Frankfurt). The
+   installer defaults to `eu-central-1` — change `s3_region` if you pick another.
+4. Leave **Block all public access** ON (recommended).
+5. Versioning: restic manages its own versioning — leave AWS versioning **off**
+   to avoid extra costs.
+
+After creating the bucket, add the **Glacier Deep Archive lifecycle rule**
+described in [💰 Cost Estimate](#-cost-estimate-s3-glacier-deep-archive-eu-central-1)
+so backups age into cheap storage automatically.
+
+### restic password (`restic_password`)
+
+This is the encryption password for your backup repository. **There is no
+recovery** — lose it and your backups are gone.
+
+- Must be **at least 12 characters** (the installer enforces this).
+- Generate one with: `openssl rand -base64 24`
+- Store it in a password manager alongside your recovery bundle.
+
+> The installer can auto-generate one for you if you leave it blank during
+> config editing.
+
+### Telegram bot token + chat ID (`telegram_bot_token`, `telegram_chat_id`)
+
+1. In Telegram, message **@BotFather** → `/newbot` → pick a name and username.
+2. BotFather replies with a token like `123456789:ABCdefGhi...` — that's your
+   `telegram_bot_token`.
+3. Start a chat with your new bot and send any message.
+4. Visit
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`
+   in a browser — look for `"chat":{"id":123456789}`. That number is your
+   `telegram_chat_id`.
+
+> For a private chat (just you), the chat ID is a positive number. For a group,
+   it starts with `-` (e.g. `-1001234567890`) — add the bot to the group and
+   promote it to admin first.
+
+### Nextcloud admin password (`nextcloud_admin_password`)
+
+The master password for the Nextcloud AIO admin panel (port 8080). Pick
+something strong — the installer can auto-generate one if left blank. Store it
+in a password manager; you'll need it to log in to the AIO management UI.
+
+### Samba user + password (`samba_user`, `samba_password`)
+
+The username and password for the network file share. This is a local Linux
+account used only by Samba — pick any username (e.g. your first name) and a
+strong password. The installer can auto-generate the password if left blank.
+
+### WiFi (optional: `wifi_ssid`, `wifi_password`)
+
+Only needed if the Pi connects over WiFi instead of Ethernet. Use your router's
+SSID and WPA2/WPA3 password. Skip entirely if using a cable.
+
+### Timezone (`timezone`)
+
+Your IANA timezone, e.g. `Europe/Berlin`, `America/New_York`, `Asia/Tehran`.
+Run `timedatectl list-timezones` on the Pi to see all options. Used for cron
+schedules (backup at 3 AM, daily report at 8 AM).
+
+---
+
+## �📦 What gets installed (in order)
 
 | # | Step | Description |
 | :-: | :-- | :-- |
