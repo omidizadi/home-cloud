@@ -167,6 +167,12 @@ class NextcloudAioStep(Step):
         if not self._master_uses_reverse_proxy():
             self.log("Mastercontainer not in reverse-proxy mode — recreating with APACHE_PORT=11000...")
             if not self.dry_run:
+                # Free :443 first: Tailscale Serve (if any) and the old Apache
+                # container still bound to it. The mastercontainer will respawn
+                # Apache on :11000 after we recreate it.
+                run("tailscale serve reset", sudo=True, capture=True)
+                run("docker stop nextcloud-aio-apache", sudo=True, capture=True)
+                run("docker rm -f nextcloud-aio-apache", sudo=True, capture=True)
                 remove_container(AIO_MASTER_CONTAINER, dry_run=self.dry_run)
             res = self.run()
             if not res.success:
@@ -199,14 +205,20 @@ class NextcloudAioStep(Step):
             run(f"{occ} config:system:set trusted_proxies 2 --value=127.0.0.1", sudo=True, capture=True)
             run(f"{occ} config:system:set trusted_proxies 3 --value=100.64.0.0/10", sudo=True, capture=True)
 
-        # 4. Verify.
+        # 4. Verify. Use --resolve because the Pi runs with --accept-dns=false
+        #    and cannot resolve its own MagicDNS name via getent.
         if not self.dry_run:
             self.log("Verifying Nextcloud is reachable over Tailscale HTTPS...")
             time.sleep(5)  # let Caddy pick up the new config
-            r = run(f"curl -sk --max-time 10 -o /dev/null -w '%{{http_code}}' https://{ts_fqdn}",
-                    capture=True)
+            ts_ip = self._tailscale_ip()
+            resolve_opt = f"--resolve {ts_fqdn}:443:{ts_ip}" if ts_ip else ""
+            r = run(
+                f"curl -sk --max-time 10 {resolve_opt} "
+                f"-o /dev/null -w '%{{http_code}}' https://{ts_fqdn}",
+                capture=True,
+            )
             code = r.stdout.strip()
-            if r.ok and code in ("200", "302", "303"):
+            if r.ok and code in ("200", "301", "302", "303"):
                 return StepResult(
                     self.name, True,
                     f"Nextcloud live at https://{ts_fqdn} (HTTP {code})",
@@ -290,7 +302,11 @@ class NextcloudAioStep(Step):
         return False
 
     def _serve_configured(self) -> bool:
-        """True if `tailscale serve` is forwarding :443 to AIO's Apache."""
+        """True if `tailscale serve` is forwarding :443 to AIO's Apache.
+
+        Tailscale's JSON uses capitalized keys ("TCP", "Web", "Handlers",
+        "Proxy"), not the lowercase ones the Go struct tags would suggest.
+        """
         if self.dry_run or not which("tailscale"):
             return True
         r = run("tailscale serve status --json", sudo=True, capture=True)
@@ -300,6 +316,15 @@ class NextcloudAioStep(Step):
             data = json.loads(r.stdout or "{}")
         except json.JSONDecodeError:
             return False
-        # Config shape: {"tcp": {"443": {"https": true, "handle": [{"proxy": "http://127.0.0.1:11000"}]}}}
-        tcp = data.get("tcp", {})
+        # Config shape:
+        # {"TCP": {"443": {"HTTPS": true}},
+        #  "Web": {"<fqdn>:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:11000"}}}}}
+        tcp = data.get("TCP") or data.get("tcp") or {}
         return "443" in tcp
+
+    def _tailscale_ip(self) -> str:
+        """Return the Pi's Tailscale IPv4, or empty string."""
+        if self.dry_run or not which("tailscale"):
+            return ""
+        r = run("tailscale ip -4", sudo=True, capture=True)
+        return r.stdout.strip().splitlines()[0] if r.ok and r.stdout.strip() else ""
