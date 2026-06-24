@@ -37,7 +37,11 @@ class InstallScreen(Screen):
 
     def __init__(self) -> None:
         super().__init__()
-        self._running = False
+        # NOTE: do not name this `_running` — it collides with Textual's
+        # MessagePump._running internal flag, which would make the start
+        # button silently do nothing (the guard `not self._running` would
+        # always be False once the screen's message pump is active).
+        self._installing = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -52,7 +56,7 @@ class InstallScreen(Screen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id
-        if bid == "btn-start" and not self._running:
+        if bid == "btn-start" and not self._installing:
             self.run_worker(self._run_install)
         elif bid == "btn-config":
             self.app.push_screen("config")
@@ -60,7 +64,7 @@ class InstallScreen(Screen):
             self.app.pop_screen()
 
     async def _run_install(self) -> None:
-        self._running = True
+        self._installing = True
         log_widget = self.query_one("#log", RichLog)
         log_widget.clear()
 
@@ -69,7 +73,7 @@ class InstallScreen(Screen):
 
         if not self.app.cfg.is_complete():
             log_widget.write("[red]✗ Configuration incomplete. Edit config first.[/]")
-            self._running = False
+            self._installing = False
             return
 
         log_widget.write(f"[cyan]Dry run:[/] {self.app.dry_run}")
@@ -119,4 +123,4 @@ class InstallScreen(Screen):
             log_widget.write("[green bold]✅ All steps completed successfully![/]")
             log_widget.write("[cyan]Next: open https://<pi-ip>:8080 to finish Nextcloud AIO setup.[/]")
 
-        self._running = False
+        self._installing = False

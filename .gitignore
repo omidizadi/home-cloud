@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Home Cloud runtime (generated on the Pi)
+homecloud-recovery-bundle.json
