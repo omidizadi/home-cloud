@@ -81,14 +81,14 @@ curl -fsSL https://raw.githubusercontent.com/omidizadi/home-cloud/main/install.s
 ```
 
 This clones the repo to `/opt/homecloud`, creates a virtualenv, and launches
-the interactive TUI.
+the interactive CLI menu.
 
-### Step 2: Use the TUI
+### Step 2: Use the menu
 
 | Menu option | What it does |
 | :-- | :-- |
 | **📥 Install / Configure** | First: edit config (SSD, DuckDNS, AWS, Telegram, etc.), then run all install steps |
-| **📊 Status Dashboard** | Live view of containers, disk, services, backup, install steps |
+| **📊 Status Dashboard** | View of containers, disk, services, backup, install steps |
 | **🔄 Update** | Update homecloud itself, Nextcloud, bot deps, restic |
 | **🔧 Repair** | Re-check and re-run any failed steps |
 | **🗑️ Uninstall** | Conservative removal — **keeps data on SSD** |
@@ -107,9 +107,9 @@ running for real.
 
 There are two ways to update the homecloud app:
 
-**From the TUI:** Main menu → 🔄 Update → "Update homecloud"
+**From the menu:** Main menu → 🔄 Update → "homecloud"
 
-**From the command line (no TUI needed):**
+**From the command line:**
 
 ```bash
 # Check if updates are available
@@ -135,7 +135,7 @@ confirmation prompt:
 | 🔐 restic | `apt-get install --only-upgrade restic` |
 | 📁 Samba | `apt-get install --only-upgrade samba` + restart smbd |
 
-**From the TUI:** Main menu → 🔄 Update → "✨ Update all"
+**From the menu:** Main menu → 🔄 Update → "Update all"
 
 **From the command line:**
 
@@ -388,7 +388,7 @@ home-cloud/
 ├── pyproject.toml
 ├── homecloud/
 │   ├── __main__.py                # CLI entry point
-│   ├── app.py                     # Textual TUI app
+│   ├── app.py                     # Plain CLI menu app
 │   ├── config.py                  # .env schema + secrets + recovery
 │   ├── constants.py               # Paths, ports, container names
 │   ├── steps/                     # One module per install phase
@@ -404,7 +404,6 @@ home-cloud/
 │   │   ├── telegram_bot.py
 │   │   └── hardening.py
 │   ├── services/                  # systemd, docker, cron managers
-│   ├── ui/                        # Textual screens
 │   └── utils/                     # shell, logging, state, checks
 └── templates/                     # Reference config files
 ```

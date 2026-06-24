@@ -8,7 +8,7 @@
 #   2. Installs Python 3 + pip + venv if needed
 #   3. Clones the home-cloud repo to /opt/homecloud
 #   4. Creates a venv and installs dependencies
-#   5. Launches the interactive TUI
+#   5. Launches the interactive CLI menu
 
 set -euo pipefail
 
@@ -90,7 +90,7 @@ ok "You can now run 'homecloud' from anywhere"
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 echo
-ok "Setup complete! Launching Home Cloud TUI..."
+ok "Setup complete! Launching Home Cloud..."
 echo
 echo -e "${CYAN}Tip:${NC} Run with --dry-run first to preview commands:"
 echo -e "  ${YELLOW}homecloud --dry-run${NC}"
