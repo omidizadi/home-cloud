@@ -103,6 +103,40 @@ homecloud --dry-run
 This prints every command without executing — review what will happen before
 running for real.
 
+### Step 4: Access Nextcloud
+
+After the install finishes, you need two URLs:
+
+**1. AIO management panel** (one-time setup):
+```
+https://<pi-ip>:8080
+```
+Open this in your browser, accept the self-signed cert warning, and log in
+with the **Nextcloud admin password** you set in config. From here you start
+all the AIO containers (Nextcloud, Collabora, ClamAV, Talk, etc.) and manage
+updates.
+
+> **⚠️ You must open the AIO panel and click "Start containers" before
+> Nextcloud is usable.** The installer only launches the master container —
+> the actual Nextcloud instance, database, Redis, etc. are started from
+> inside the AIO panel.
+
+**2. Nextcloud itself** (daily use):
+```
+https://<your-subdomain>.duckdns.org
+```
+Once AIO containers are started and DuckDNS + TLS are configured, this is
+your cloud. Log in with the admin username (`admin`) and the Nextcloud admin
+password from your config.
+
+**If DuckDNS isn't working yet** (or you're on your LAN), use:
+```
+https://<pi-ip>
+```
+
+> `<pi-ip>` is your Pi's local IP (e.g. `192.168.1.50`). Find it with
+> `hostname -I` on the Pi, or check your router's DHCP lease table.
+
 ### Updating homecloud itself
 
 There are two ways to update the homecloud app:
