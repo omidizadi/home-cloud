@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ..constants import SAMBA_SHARE_DIR
 from ..services import disable_unit, enable_unit, restart_unit, unit_status
-from ..utils import run
+from ..utils import file_exists_sudo, read_file_sudo, run, write_file_sudo
 from .base import Step, StepResult
 
 SMB_CONF = Path("/etc/samba/smb.conf")
@@ -74,12 +74,11 @@ class SambaStep(Step):
         if self.dry_run:
             self.log(f"[dry-run] would append to {SMB_CONF}:\n{block}")
             return
-        content = SMB_CONF.read_text() if SMB_CONF.exists() else ""
+        content = read_file_sudo(SMB_CONF) or ""
         if f"[{SHARE_NAME}]" in content:
             self.log("Samba share already configured")
             return
-        with open(SMB_CONF, "a") as f:
-            f.write(block)
+        write_file_sudo(SMB_CONF, content + block)
         self.log(f"Added share '{SHARE_NAME}' to {SMB_CONF}")
 
     def status(self) -> StepResult:
@@ -97,12 +96,12 @@ class SambaStep(Step):
         disable_unit("smbd", dry_run=self.dry_run)
         run("systemctl stop smbd", sudo=True, dry_run=self.dry_run)
         # Remove share block from smb.conf
-        if not self.dry_run and SMB_CONF.exists():
-            content = SMB_CONF.read_text()
+        if not self.dry_run and file_exists_sudo(SMB_CONF):
+            content = read_file_sudo(SMB_CONF) or ""
             if f"[{SHARE_NAME}]" in content:
                 idx = content.find(f"\n[{SHARE_NAME}]")
                 content = content[:idx] if idx >= 0 else content
-                SMB_CONF.write_text(content)
+                write_file_sudo(SMB_CONF, content)
                 self.log("Removed share from smb.conf")
         self.mark_undone()
         return StepResult(self.name, True, "Samba disabled (share data preserved on SSD)")

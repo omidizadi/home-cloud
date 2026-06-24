@@ -9,6 +9,7 @@ Includes:
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import secrets as pysecrets
@@ -20,7 +21,7 @@ from typing import Any
 from dotenv import dotenv_values
 
 from .constants import CONFIG_DIR, ENV_FILE
-from .utils import log
+from .utils import file_exists_sudo, log, read_file_sudo, run, write_file_sudo
 
 # ── Schema ────────────────────────────────────────────────────────────────────
 
@@ -120,10 +121,17 @@ class Config:
 
 
 def load_config() -> Config:
-    """Load config from .env, falling back to defaults."""
-    if not ENV_FILE.exists():
+    """Load config from .env, falling back to defaults.
+
+    The .env file is root-owned with 0600 perms, so when running as a
+    non-root user we must read it through sudo.
+    """
+    if not file_exists_sudo(ENV_FILE):
         return Config()
-    values = dotenv_values(ENV_FILE)
+    content = read_file_sudo(ENV_FILE)
+    if content is None:
+        return Config()
+    values = dotenv_values(stream=io.StringIO(content))
     data: dict[str, Any] = {}
     for f in fields(Config):
         if f.name.startswith("_"):
@@ -135,8 +143,11 @@ def load_config() -> Config:
 
 
 def save_config(cfg: Config, *, dry_run: bool = False) -> None:
-    """Persist config to .env with 0600 perms, root-owned."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    """Persist config to .env with 0600 perms, root-owned.
+
+    Writes go through sudo so this works when the app is running as a
+    non-root user (the normal case — see install.sh).
+    """
     lines = []
     for f in fields(Config):
         if f.name.startswith("_"):
@@ -148,13 +159,7 @@ def save_config(cfg: Config, *, dry_run: bool = False) -> None:
     if dry_run:
         log.info("[dry-run] would write %s:\n%s", ENV_FILE, content)
         return
-    ENV_FILE.write_text(content)
-    # Lock down permissions
-    os.chmod(ENV_FILE, 0o600)
-    try:
-        os.chown(ENV_FILE, 0, 0)
-    except PermissionError:
-        pass
+    write_file_sudo(ENV_FILE, content, mode=0o600)
     log.info("config saved to %s", ENV_FILE)
 
 

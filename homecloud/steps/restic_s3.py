@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..constants import BACKUP_SCRIPT, NEXTCLOUD_DATADIR
 from ..services import add_cron_block, remove_cron_block
-from ..utils import run, which
+from ..utils import file_exists_sudo, read_file_sudo, run, which, write_file_sudo
 from .base import Step, StepResult
 
 BACKUP_LOG = Path("/var/log/nextcloud-s3-backup.log")
@@ -120,19 +120,18 @@ echo "=== Backup finished: $(date) ==="
         if self.dry_run:
             self.log(f"[dry-run] would write {BACKUP_SCRIPT}")
             return
-        BACKUP_SCRIPT.write_text(script)
-        run(f"chmod +x {BACKUP_SCRIPT}", sudo=True)
+        write_file_sudo(BACKUP_SCRIPT, script, mode=0o755)
         self.log(f"Wrote {BACKUP_SCRIPT}")
 
     def status(self) -> StepResult:
         if self.dry_run:
             return StepResult(self.name, True, "[dry-run]")
-        if not BACKUP_SCRIPT.exists():
+        if not file_exists_sudo(BACKUP_SCRIPT):
             return StepResult(self.name, False, "Backup script not found")
-        if not BACKUP_LOG.exists():
+        if not file_exists_sudo(BACKUP_LOG):
             return StepResult(self.name, True, "Configured (no backup run yet)")
         # Read last run
-        content = BACKUP_LOG.read_text()
+        content = read_file_sudo(BACKUP_LOG) or ""
         if "=== Backup finished" in content.split("=== Backup started")[-1]:
             return StepResult(self.name, True, "Last backup completed")
         return StepResult(self.name, False, "Last backup may be incomplete")

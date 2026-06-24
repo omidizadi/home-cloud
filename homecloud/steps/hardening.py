@@ -8,7 +8,7 @@ from ..services import (
     unit_status,
     write_docker_ssd_dependency,
 )
-from ..utils import run
+from ..utils import file_exists_sudo, run
 from .base import Step, StepResult
 
 
@@ -75,8 +75,8 @@ class HardeningStep(Step):
     def undo(self) -> StepResult:
         self.log("Conservative undo: removing Docker→SSD override only")
         from ..constants import DOCKER_SSD_OVERRIDE
-        if not self.dry_run and DOCKER_SSD_OVERRIDE.exists():
-            DOCKER_SSD_OVERRIDE.unlink()
+        if not self.dry_run and file_exists_sudo(DOCKER_SSD_OVERRIDE):
+            run(f"sudo -n rm -f {DOCKER_SSD_OVERRIDE}", capture=True)
             daemon_reload(dry_run=self.dry_run)
         self.mark_undone()
         return StepResult(self.name, True, "Hardening override removed")

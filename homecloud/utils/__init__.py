@@ -206,3 +206,80 @@ def ram_gb() -> float:
     except FileNotFoundError:
         pass
     return 0.0
+
+
+# ── sudo-aware file I/O ──────────────────────────────────────────────────────
+
+
+def write_file_sudo(
+    path: Path | str,
+    content: str,
+    *,
+    mode: int = 0o644,
+    owner: str = "root",
+    group: str = "root",
+) -> None:
+    """Write `content` to `path` with given mode/owner, via sudo if needed.
+
+    The app normally runs as a non-root user (see install.sh), but writes to
+    root-owned paths like /etc, /opt, /var. This helper writes to a temp file
+    owned by the current user, then atomically installs it into place as root
+    with the requested mode/ownership. Avoids quoting issues with secrets.
+
+    When already root, writes directly with os.chmod/os.chown.
+    """
+    import tempfile
+    import shutil
+
+    path = Path(path)
+    if is_root():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content)
+        os.chmod(path, mode)
+        try:
+            os.chown(path, 0, 0)
+        except PermissionError:
+            pass
+        return
+
+    # Non-root: write temp file we own, then install as root.
+    # Use sudo -n (non-interactive) so we fail fast instead of hanging on a
+    # password prompt. The app pre-checks has_sudo() (which uses sudo -n) so
+    # passwordless sudo is assumed to be available.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="homecloud-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(content)
+        tmp_path = Path(tmp)
+        r = run(
+            f"sudo -n install -m {mode:o} -o {owner} -g {group} {tmp_path} {path}",
+            capture=True,
+        )
+        if not r.ok:
+            raise PermissionError(f"failed to write {path} via sudo: {r.stderr.strip()}")
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+
+
+def read_file_sudo(path: Path | str) -> str | None:
+    """Read a file, via sudo when not root. Returns None if missing."""
+    path = Path(path)
+    if is_root():
+        try:
+            return path.read_text()
+        except FileNotFoundError:
+            return None
+    r = run(f"sudo -n cat {path}", capture=True)
+    return r.stdout if r.ok else None
+
+
+def file_exists_sudo(path: Path | str) -> bool:
+    """Check if a file exists, via sudo when not root."""
+    path = Path(path)
+    if is_root():
+        return path.exists()
+    return run(f"sudo -n test -f {path}", capture=True).ok

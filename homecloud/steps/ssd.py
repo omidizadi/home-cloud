@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..constants import BORG_BACKUP_DIR, NCDATA_MOUNT, NEXTCLOUD_DATADIR, SAMBA_SHARE_DIR
-from ..utils import run
+from ..utils import read_file_sudo, run
 from .base import Step, StepResult
 
 
@@ -92,7 +92,7 @@ class SsdStep(Step):
             self.log(f"[dry-run] would add fstab entry: {entry}")
             return
         fstab = Path("/etc/fstab")
-        content = fstab.read_text()
+        content = read_file_sudo(fstab) or ""
         if str(NCDATA_MOUNT) in content:
             self.log("fstab entry already exists")
             return
@@ -116,7 +116,7 @@ class SsdStep(Step):
         # Remove fstab entry
         if not self.dry_run:
             fstab = Path("/etc/fstab")
-            content = fstab.read_text()
+            content = read_file_sudo(fstab) or ""
             new_lines = [
                 ln for ln in content.splitlines()
                 if str(NCDATA_MOUNT) not in ln

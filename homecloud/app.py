@@ -15,6 +15,7 @@ from .constants import CONFIG_DIR, INSTALL_DIR, LOG_DIR, STATE_DIR, VENV_DIR
 from .services import container_status, unit_status
 from .steps import ALL_STEPS
 from .utils import has_sudo, is_pi5, is_root, log, run, setup_logging, which
+from .utils import file_exists_sudo, read_file_sudo
 from .utils.state import clear_all, is_step_done
 
 
@@ -199,8 +200,8 @@ class HomeCloudApp:
         # Backup
         print("\n━━ Backup ━━")
         backup_log = Path("/var/log/nextcloud-s3-backup.log")
-        if backup_log.exists():
-            content = backup_log.read_text()
+        if file_exists_sudo(backup_log):
+            content = read_file_sudo(backup_log) or ""
             if "=== Backup finished" in content.split("=== Backup started")[-1]:
                 _ok("Last backup completed")
             else:

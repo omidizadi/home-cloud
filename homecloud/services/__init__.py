@@ -7,18 +7,17 @@ from pathlib import Path
 
 from ..constants import BOT_SERVICE as BOT_SERVICE
 from ..constants import DOCKER_SSD_OVERRIDE
-from ..utils import Result, log, run
+from ..utils import Result, log, run, write_file_sudo
 
 # ── systemd ───────────────────────────────────────────────────────────────────
 
 
 def write_unit(path: Path, content: str, *, dry_run: bool = False) -> None:
     """Write a systemd unit file (creating parent dir)."""
-    path.parent.mkdir(parents=True, exist_ok=True)
     if dry_run:
         log.info("[dry-run] would write unit file: %s", path)
         return
-    path.write_text(content)
+    write_file_sudo(path, content, mode=0o644)
     log.info("wrote unit file: %s", path)
 
 

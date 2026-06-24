@@ -14,7 +14,7 @@ from ..services import (
     unit_status,
     write_unit,
 )
-from ..utils import run
+from ..utils import file_exists_sudo, run, write_file_sudo
 from .base import Step, StepResult
 
 
@@ -82,8 +82,7 @@ class TelegramBotStep(Step):
         if self.dry_run:
             self.log(f"[dry-run] would write {BOT_SCRIPT}")
             return
-        BOT_SCRIPT.write_text(script)
-        run(f"chmod +x {BOT_SCRIPT}", sudo=True)
+        write_file_sudo(BOT_SCRIPT, script, mode=0o755)
         self.log(f"Wrote {BOT_SCRIPT}")
 
     def _bot_template(self) -> str:
@@ -351,8 +350,8 @@ class TelegramBotStep(Step):
         self.log("Conservative undo: stopping + disabling bot (script kept)")
         stop_unit("ncbot", dry_run=self.dry_run)
         disable_unit("ncbot", dry_run=self.dry_run)
-        if not self.dry_run and BOT_SERVICE.exists():
-            BOT_SERVICE.unlink()
+        if not self.dry_run and file_exists_sudo(BOT_SERVICE):
+            run(f"sudo -n rm -f {BOT_SERVICE}", capture=True)
             daemon_reload(dry_run=self.dry_run)
         self.mark_undone()
         return StepResult(self.name, True, "Bot service removed (script kept at /opt/ncbot.py)")

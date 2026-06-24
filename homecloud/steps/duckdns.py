@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..constants import DUCKDNS_SCRIPT
 from ..services import add_cron_block, remove_cron_block
-from ..utils import run
+from ..utils import file_exists_sudo, read_file_sudo, run, write_file_sudo
 from .base import Step, StepResult
 
 DUCKDNS_DIR = DUCKDNS_SCRIPT.parent
@@ -34,8 +34,7 @@ class DuckDnsStep(Step):
         if self.dry_run:
             self.log(f"[dry-run] would write {DUCKDNS_SCRIPT}:\n{script_content}")
         else:
-            DUCKDNS_SCRIPT.write_text(script_content)
-            run(f"chmod +x {DUCKDNS_SCRIPT}", sudo=True)
+            write_file_sudo(DUCKDNS_SCRIPT, script_content, mode=0o755)
             self.log(f"Wrote {DUCKDNS_SCRIPT}")
 
         # Run once to verify
@@ -57,15 +56,12 @@ class DuckDnsStep(Step):
         )
 
     def _read_log(self) -> str:
-        try:
-            return DUCKDNS_LOG.read_text()
-        except OSError:
-            return ""
+        return read_file_sudo(DUCKDNS_LOG) or ""
 
     def status(self) -> StepResult:
         if self.dry_run:
             return StepResult(self.name, True, "[dry-run]")
-        if not DUCKDNS_SCRIPT.exists():
+        if not file_exists_sudo(DUCKDNS_SCRIPT):
             return StepResult(self.name, False, "DuckDNS script not found")
         log_content = self._read_log()
         ok = "OK" in log_content
