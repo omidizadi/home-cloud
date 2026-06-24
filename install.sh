@@ -88,6 +88,26 @@ EOF
 chmod +x "$WRAPPER"
 ok "You can now run 'homecloud' from anywhere"
 
+# ── Grant passwordless sudo to the invoking user ──────────────────────────────
+# The app runs as SUDO_USER (non-root) but needs to write to /etc, /opt, /var
+# and manage systemd services. Without passwordless sudo, every privileged
+# operation fails with PermissionError.
+SUDO_USER="${SUDO_USER:-pi}"
+SUDOERS_FILE="/etc/sudoers.d/homecloud"
+info "Granting passwordless sudo to '$SUDO_USER'..."
+echo "$SUDO_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS_FILE"
+chmod 0440 "$SUDOERS_FILE"
+# Validate sudoers syntax before committing (visudo -c)
+if command -v visudo >/dev/null 2>&1; then
+    if ! visudo -cf "$SUDOERS_FILE" >/dev/null 2>&1; then
+        warn "sudoers syntax check failed — removing $SUDOERS_FILE to stay safe"
+        rm -f "$SUDOERS_FILE"
+        error "Could not configure passwordless sudo. Aborting."
+        exit 1
+    fi
+fi
+ok "Passwordless sudo enabled for '$SUDO_USER'"
+
 # ── Launch ────────────────────────────────────────────────────────────────────
 echo
 ok "Setup complete! Launching Home Cloud..."
@@ -96,7 +116,5 @@ echo -e "${CYAN}Tip:${NC} Run with --dry-run first to preview commands:"
 echo -e "  ${YELLOW}homecloud --dry-run${NC}"
 echo
 
-# Run as the user who invoked sudo (not root) for better Docker UX
-SUDO_USER="${SUDO_USER:-pi}"
 info "Launching as user '$SUDO_USER'..."
 exec sudo -u "$SUDO_USER" "$VENV_DIR/bin/python3" -m homecloud "$@"

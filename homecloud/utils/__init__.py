@@ -246,7 +246,15 @@ def write_file_sudo(
     # Use sudo -n (non-interactive) so we fail fast instead of hanging on a
     # password prompt. The app pre-checks has_sudo() (which uses sudo -n) so
     # passwordless sudo is assumed to be available.
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # Parent dir creation must also go through sudo — the non-root user can't
+    # mkdir inside /etc, /opt, /var, etc.
+    parent = path.parent
+    if not file_exists_sudo(parent):
+        r = run(f"sudo -n mkdir -p {parent}", capture=True)
+        if not r.ok:
+            raise PermissionError(
+                f"cannot create directory {parent} via sudo: {r.stderr.strip()}"
+            )
     fd, tmp = tempfile.mkstemp(prefix="homecloud-")
     try:
         with os.fdopen(fd, "w") as f:
@@ -282,4 +290,17 @@ def file_exists_sudo(path: Path | str) -> bool:
     path = Path(path)
     if is_root():
         return path.exists()
-    return run(f"sudo -n test -f {path}", capture=True).ok
+    return run(f"sudo -n test -e {path}", capture=True).ok
+
+
+def can_write_root() -> bool:
+    """Verify we can write to root-owned paths (either root or working sudo).
+
+    This is the pre-flight check called at app startup. Returns True if the
+    current process can create files under /etc/homecloud.
+    """
+    if is_root():
+        return True
+    # Test that passwordless sudo actually works by creating a probe dir.
+    return run("sudo -n mkdir -p /etc/homecloud && sudo -n test -w /etc/homecloud",
+               capture=True).ok

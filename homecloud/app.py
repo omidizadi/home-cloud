@@ -15,7 +15,7 @@ from .constants import CONFIG_DIR, INSTALL_DIR, LOG_DIR, STATE_DIR, VENV_DIR
 from .services import container_status, unit_status
 from .steps import ALL_STEPS
 from .utils import has_sudo, is_pi5, is_root, log, run, setup_logging, which
-from .utils import file_exists_sudo, read_file_sudo
+from .utils import can_write_root, file_exists_sudo, read_file_sudo
 from .utils.state import clear_all, is_step_done
 
 
@@ -570,11 +570,30 @@ class HomeCloudApp:
 
     def run(self) -> None:
         """Main menu loop."""
+        # Pre-flight: hard requirement — must be able to write root-owned paths.
+        # Fail immediately so the user doesn't enter all their config only to
+        # hit a PermissionError on save.
+        if not can_write_root():
+            print("=" * 60)
+            print("  ❌  CANNOT WRITE TO /etc/homecloud")
+            print("=" * 60)
+            print()
+            print("Home Cloud needs passwordless sudo to manage config, state,")
+            print("and service files under /etc, /opt, and /var.")
+            print()
+            print("You are running as a non-root user without working sudo.")
+            print("Fix this first, then re-run:")
+            print()
+            print("  # Option A: run the installer as root (recommended)")
+            print("  curl -fsSL https://raw.githubusercontent.com/omidizadi/home-cloud/main/install.sh | sudo bash")
+            print()
+            print("  # Option B: grant passwordless sudo to your user")
+            print("  echo \"$USER ALL=(ALL) NOPASSWD: ALL\" | sudo tee /etc/sudoers.d/$USER")
+            print()
+            return
         # Pre-flight warnings
         if not is_pi5() and not self.dry_run:
             print("⚠️  Warning: this doesn't appear to be a Raspberry Pi 5. Proceed at your own risk.")
-        if not (is_root() or has_sudo()):
-            print("⚠️  Warning: no sudo access. Most install steps will fail.")
         if self.dry_run:
             print("ℹ️  Dry-run mode active — no commands will execute.")
 
