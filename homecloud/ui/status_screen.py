@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Button, Footer, Header, Label, RichLog, Static
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Label, RichLog
 
 from ..services import container_status, unit_status
 from ..steps import ALL_STEPS
 from ..utils import run
 
 
-class StatusScreen(Static):
+class StatusScreen(Screen):
     DEFAULT_CSS = """
     StatusScreen {
         align: center middle;

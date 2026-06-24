@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container, ScrollableContainer
-from textual.widgets import Button, Footer, Header, Input, Label, Static
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Input, Label
 
 from ..config import Config, generate_password, save_config, validate
 from ..utils import run
 
 
-class ConfigScreen(Static):
+class ConfigScreen(Screen):
     DEFAULT_CSS = """
     ConfigScreen {
         align: center middle;

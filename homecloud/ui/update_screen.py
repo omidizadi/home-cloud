@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Button, Footer, Header, Label, RichLog, Static
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Label, RichLog
 
 from ..constants import BOT_VENV, INSTALL_DIR, VENV_DIR
 from ..utils import run, which
 
 
-class UpdateScreen(Static):
+class UpdateScreen(Screen):
     DEFAULT_CSS = """
     UpdateScreen {
         align: center middle;

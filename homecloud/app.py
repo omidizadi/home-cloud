@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.widgets import Footer, Header
 
 from .config import Config, export_recovery_bundle, load_config
 from .ui import (
@@ -42,9 +41,8 @@ class HomeCloudApp(App):
         self.cfg: Config = load_config()
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        yield MainMenu()
-        yield Footer()
+        # Screens are pushed via on_mount; each screen yields its own Header/Footer.
+        yield from ()
 
     def on_mount(self) -> None:
         self.install_screen(MainMenu(), "main")

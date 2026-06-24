@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Button, Footer, Header, Label, Static
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Label
 
 from .. import __version__
 
 
-class MainMenu(Static):
+class MainMenu(Screen):
     """The main menu of the Home Cloud TUI."""
 
     DEFAULT_CSS = """

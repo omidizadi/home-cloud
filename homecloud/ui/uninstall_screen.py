@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Button, Footer, Header, Label, RichLog, Static
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Label, RichLog
 
 from ..steps import ALL_STEPS
 
 
-class UninstallScreen(Static):
+class UninstallScreen(Screen):
     DEFAULT_CSS = """
     UninstallScreen {
         align: center middle;

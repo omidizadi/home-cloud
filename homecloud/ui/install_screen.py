@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Button, Footer, Header, Label, RichLog, Static
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Label, RichLog
 
 from ..config import load_config
 from ..steps import ALL_STEPS
 from ..utils import log
 
 
-class InstallScreen(Static):
+class InstallScreen(Screen):
     DEFAULT_CSS = """
     InstallScreen {
         align: center middle;

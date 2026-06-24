@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Button, Footer, Header, Label, RichLog, Static
+from textual.screen import Screen
+from textual.widgets import Button, Footer, Header, Label, RichLog
 
 from ..steps import ALL_STEPS
 
 
-class RepairScreen(Static):
+class RepairScreen(Screen):
     DEFAULT_CSS = """
     RepairScreen {
         align: center middle;
