@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import Config, export_recovery_bundle, generate_password, load_config, save_config, validate
-from .constants import INSTALL_DIR, VENV_DIR
+from .constants import CONFIG_DIR, INSTALL_DIR, LOG_DIR, STATE_DIR, VENV_DIR
 from .services import container_status, unit_status
 from .steps import ALL_STEPS
 from .utils import has_sudo, is_pi5, is_root, log, run, setup_logging, which
@@ -256,10 +256,11 @@ class HomeCloudApp:
             _fail("Invalid choice")
 
     def menu_uninstall(self) -> None:
-        _header("🗑️ Uninstall (Conservative)")
-        print("⚠️  This removes all services and containers, but will NOT")
-        print("    touch your data on the SSD (/mnt/ncdata).")
-        if not _confirm("\nProceed with uninstall?"):
+        _header("🗑️ Uninstall")
+        print("⚠️  This removes ALL services, containers, AND the homecloud")
+        print("    code itself (repo, venv, CLI wrapper, config, state, logs).")
+        print("    Your data on the SSD (/mnt/ncdata) will NOT be touched.")
+        if not _confirm("\nProceed with full uninstall?"):
             return
 
         print()
@@ -276,10 +277,36 @@ class HomeCloudApp:
                 _fail(f"EXCEPTION: {e}")
 
         clear_all()
-        print("\nConfig (.env) kept at /etc/homecloud/.env")
-        print("Use 'homecloud secrets export' to back up, then delete manually if desired.")
+        print()
+        self._nuke_self()
         _ok("Uninstall complete. Your data is safe on the SSD at /mnt/ncdata")
+        print("homecloud is gone. Reinstall with the install.sh bootstrap script.")
         _pause()
+
+    def _nuke_self(self) -> None:
+        """Remove the homecloud installation itself: repo, venv, wrapper, config, logs."""
+        _header("🧹 Removing homecloud code")
+        targets = [
+            ("repo clone", INSTALL_DIR),
+            ("virtualenv", VENV_DIR),
+            ("CLI wrapper", Path("/usr/local/bin/homecloud")),
+            ("config dir", CONFIG_DIR),
+            ("state dir", STATE_DIR),
+            ("log dir", LOG_DIR),
+        ]
+        for label, path in targets:
+            if not path.exists():
+                _info(f"{label}: already gone ({path})")
+                continue
+            print(f"  Removing {label}: {path}")
+            if self.dry_run:
+                _info("dry-run: skipped")
+                continue
+            r = run(f"rm -rf {path}", capture=True, sudo=True)
+            if r.ok:
+                _ok(f"{label} removed")
+            else:
+                _fail(f"{label}: {r.stderr.strip()}")
 
     def menu_config(self) -> None:
         _header("⚙️ Edit Config")
@@ -559,7 +586,7 @@ class HomeCloudApp:
             print("  2. 📊  Status Dashboard")
             print("  3. 🔄  Update")
             print("  4. 🔧  Repair")
-            print("  5. 🗑️  Uninstall (conservative)")
+            print("  5. 🗑️  Uninstall (full)")
             print("  6. ⚙️  Edit Config")
             print("  7. 🔐  Secrets: Export Recovery Bundle")
             print("  0. ❌  Quit")
