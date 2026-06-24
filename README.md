@@ -103,31 +103,66 @@ homecloud --dry-run
 This prints every command without executing — review what will happen before
 running for real.
 
-### Step 4: Access Nextcloud
+### Step 4: Port forwarding (on your router)
 
-After the install finishes, you need two URLs:
+Forward these ports to your Pi's local IP (find it with `hostname -I` on the Pi):
 
-**1. AIO management panel** (one-time setup):
+| Port | Protocol | Purpose |
+| :--: | :------: | :------ |
+| **80** | TCP | Let's Encrypt HTTP challenge (for TLS certs) |
+| **443** | TCP | Nextcloud HTTPS (daily use) |
+| **443** | UDP | HTTP/3 (optional, faster connections) |
+| **3478** | TCP + UDP | Talk TURN server (video calls) |
+| **5349** | TCP + UDP | Talk TURN over TLS (video calls) |
+
+### Step 5: Complete AIO setup (one-time, in your browser)
+
+After the installer finishes, Nextcloud isn't running yet — you need to open
+the AIO panel and click through a few screens.
+
+**1. Open the AIO panel:**
 ```
 https://<pi-ip>:8080
 ```
-Open this in your browser, accept the self-signed cert warning, and log in
-with the **Nextcloud admin password** you set in config. From here you start
-all the AIO containers (Nextcloud, Collabora, ClamAV, Talk, etc.) and manage
-updates.
+Accept the self-signed certificate warning in your browser.
 
-> **⚠️ You must open the AIO panel and click "Start containers" before
-> Nextcloud is usable.** The installer only launches the master container —
-> the actual Nextcloud instance, database, Redis, etc. are started from
-> inside the AIO panel.
+**2. Enter your domain:**
+Type your full DuckDNS domain (e.g. `omid.duckdns.org`) in the domain field
+and submit. AIO validates that:
+- Port 443 is open and forwarded to your Pi
+- The DNS A record points to your public IP
 
-**2. Nextcloud itself** (daily use):
+> **If validation fails:** double-check port forwarding and that your DuckDNS
+> subdomain IP matches your current public IP. You can also [skip domain
+> validation](https://github.com/nextcloud/all-in-one#how-to-skip-the-domain-validation)
+> if you're sure everything is correct.
+
+**3. Pick optional containers:**
+| Container | Recommended? | Why |
+| :-- | :--: | :-- |
+| Nextcloud (core) | ✅ always | The actual cloud |
+| Nextcloud Talk | ✅ yes | Video/audio calls |
+| Collabora | optional | Online document editing (LibreOffice) |
+| ClamAV | ❌ no | Antivirus — heavy, eats RAM on a Pi |
+| Fulltextsearch | ❌ no | Elasticsearch — heavy on Pi |
+| Imaginary | optional | Image processing/thumbnailing |
+
+**4. Set an admin password** — this is your Nextcloud `admin` login.
+Use something strong and store it in a password manager.
+
+**5. Click "Start containers"** — AIO pulls Docker images and boots everything.
+This takes 5–10 minutes on a Pi. You'll see progress in the panel.
+
+**6. When all containers show ✅**, your Nextcloud is live at:
 ```
 https://<your-subdomain>.duckdns.org
 ```
-Once AIO containers are started and DuckDNS + TLS are configured, this is
-your cloud. Log in with the admin username (`admin`) and the Nextcloud admin
-password from your config.
+Log in with username `admin` and the password you just set.
+
+> **⚠️ You must open the AIO panel and complete these steps before
+> Nextcloud is usable.** The installer only launches the master container —
+> the actual Nextcloud instance, database, Redis, etc. are started from
+> inside the AIO panel.
 
 **If DuckDNS isn't working yet** (or you're on your LAN), use:
 ```
@@ -136,6 +171,16 @@ https://<pi-ip>
 
 > `<pi-ip>` is your Pi's local IP (e.g. `192.168.1.50`). Find it with
 > `hostname -I` on the Pi, or check your router's DHCP lease table.
+
+### Step 6: Access Nextcloud (daily use)
+
+Once AIO containers are running and DuckDNS + TLS are configured, this is
+your cloud:
+```
+https://<your-subdomain>.duckdns.org
+```
+Log in with the admin username (`admin`) and the Nextcloud admin password from
+your config.
 
 ### Updating homecloud itself
 
@@ -218,6 +263,9 @@ The installer uses this for:
 - Let's Encrypt TLS certificates for Nextcloud
 
 > Make sure your router forwards ports **80** and **443** to the Pi's local IP.
+> For Talk video calls, also forward **3478** and **5349** (TCP+UDP). See
+> [Step 4: Port forwarding](#step-4-port-forwarding-on-your-router) for the
+> full table.
 
 ### AWS S3 credentials (`aws_access_key_id`, `aws_secret_access_key`)
 

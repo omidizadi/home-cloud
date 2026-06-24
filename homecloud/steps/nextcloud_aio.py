@@ -62,7 +62,18 @@ class NextcloudAioStep(Step):
         return StepResult(
             self.name, True,
             f"AIO master container running. Open {url} to complete setup.",
-            "In the AIO panel: enter your domain, set admin password, enable Talk + Memories, then start containers.",
+            "OPEN THE AIO PANEL IN YOUR BROWSER:\n"
+            f"  1. Go to https://<pi-ip>:{AIO_ADMIN_PORT} (accept cert warning)\n"
+            "  2. Enter your DuckDNS domain (e.g. yoursub.duckdns.org)\n"
+            "  3. Pick optional containers: Talk ✅, Collabora optional, skip ClamAV/FTS\n"
+            "  4. Set the admin password\n"
+            "  5. Click 'Start containers' (takes 5-10 min on a Pi)\n"
+            "  6. Once done → Nextcloud is live at https://yoursub.duckdns.org\n"
+            "\n"
+            "REQUIREMENTS:\n"
+            "  • Port 443 (TCP) forwarded to Pi — for domain validation + HTTPS\n"
+            "  • Ports 3478, 5349 (TCP+UDP) forwarded — for Talk video calls\n"
+            "  • Port 80 (TCP) forwarded — for Let's Encrypt cert renewal",
         )
 
     def status(self) -> StepResult:
