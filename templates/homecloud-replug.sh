@@ -49,14 +49,44 @@ fi
 # 3. Brief settle — let the kernel flush device nodes
 sleep 2
 
-# 4. Restart Docker (containers with --restart=always will auto-recover)
+# 4. Restart Docker (containers with --restart=always will recover in undefined order)
 log "Restarting Docker..."
 systemctl restart docker 2>&1 || true
 
-# Give Docker a moment to initialize
+# Wait for Docker daemon to be fully ready
+log "Waiting for Docker daemon..."
+for i in $(seq 1 30); do
+    if docker info >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
+# 5. Wait for the database container to be running and accepting connections.
+#    After a Docker restart, containers come up in undefined order.
+#    If Nextcloud starts before the database, it loops on
+#    "could not translate host name nextcloud-aio-database to address".
+#    So we explicitly wait for the DB to be ready before restarting the master.
+log "Waiting for database container to be ready..."
+DB_CONTAINER="nextcloud-aio-database"
+for i in $(seq 1 60); do
+    STATUS=$(docker inspect -f '{{.State.Status}}' "$DB_CONTAINER" 2>/dev/null || echo "missing")
+    if [ "$STATUS" = "running" ]; then
+        # Container is running — check if PostgreSQL accepts connections
+        if docker exec "$DB_CONTAINER" pg_isready -U nextcloud >/dev/null 2>&1; then
+            log "Database is ready (took ${i}s)"
+            break
+        fi
+    fi
+    if [ "$i" -eq 60 ]; then
+        log "WARNING: database not ready after 60s — proceeding anyway"
+    fi
+    sleep 1
+done
+# Small extra grace period for DNS propagation inside Docker network
 sleep 3
 
-# 5. Restart Nextcloud AIO master container (cascades to all AIO children)
+# 6. Restart Nextcloud AIO master container (cascades to all AIO children)
 log "Restarting Nextcloud AIO..."
 docker restart nextcloud-aio-mastercontainer 2>&1 || true
 

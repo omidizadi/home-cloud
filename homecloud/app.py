@@ -412,6 +412,38 @@ class HomeCloudApp:
             return
         _info("Restarting Docker...")
         run("systemctl restart docker", sudo=True, capture=True)
+
+        # Wait for Docker daemon
+        _info("Waiting for Docker daemon...")
+        import time as _time
+        for _ in range(30):
+            if run("docker info", sudo=True, capture=True).ok:
+                break
+            _time.sleep(1)
+
+        # Wait for the database container to be running and accepting connections.
+        # After a Docker restart containers come up in undefined order — if
+        # Nextcloud starts before the database it will crash-loop on
+        # "could not translate host name nextcloud-aio-database to address".
+        _info("Waiting for database to be ready...")
+        for i in range(1, 61):
+            st = run(
+                "docker inspect -f '{{.State.Status}}' nextcloud-aio-database",
+                sudo=True, capture=True,
+            ).stdout.strip()
+            if st == "running":
+                if run(
+                    "docker exec nextcloud-aio-database pg_isready -U nextcloud",
+                    sudo=True, capture=True,
+                ).ok:
+                    _ok(f"Database ready ({i}s)")
+                    break
+            if i == 60:
+                _fail("Database not ready after 60s — proceeding anyway")
+            _time.sleep(1)
+        # Brief grace period for Docker-internal DNS propagation
+        _time.sleep(3)
+
         _info("Restarting Nextcloud AIO master container...")
         run("docker restart nextcloud-aio-mastercontainer", sudo=True, capture=True)
         _ok("SSD is back online. Services are restarting.")
