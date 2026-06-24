@@ -40,7 +40,7 @@ class DockerStep(Step):
             return StepResult(self.name, True, "[dry-run]")
         if not which("docker"):
             return StepResult(self.name, False, "docker binary not found")
-        r = run("docker info", capture=True)
+        r = run("docker info", sudo=True, capture=True)
         if r.ok:
             return StepResult(self.name, True, "Docker daemon running")
         return StepResult(self.name, False, "Docker daemon not responding")

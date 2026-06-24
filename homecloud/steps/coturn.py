@@ -35,7 +35,7 @@ class CoturnStep(Step):
         )
 
         # Check if Talk container exists
-        r = run("docker inspect nextcloud-aio-talk --format='{{.State.Status}}'", capture=True)
+        r = run("docker inspect nextcloud-aio-talk --format='{{.State.Status}}'", sudo=True, capture=True)
         talk_status = r.stdout.strip() if r.ok else "not-running"
 
         self.mark_done({"domain": domain, "talk_status": talk_status})
@@ -48,17 +48,17 @@ class CoturnStep(Step):
     def status(self) -> StepResult:
         if self.dry_run:
             return StepResult(self.name, True, "[dry-run]")
-        r = run("docker inspect nextcloud-aio-talk --format='{{.State.Status}}'", capture=True)
+        r = run("docker inspect nextcloud-aio-talk --format='{{.State.Status}}'", sudo=True, capture=True)
         st = r.stdout.strip() if r.ok else "not-found"
         return StepResult(self.name, st == "running", f"Talk container: {st}")
 
     def repair(self) -> StepResult:
         self.log("Restarting Talk container...")
-        run("docker restart nextcloud-aio-talk", dry_run=self.dry_run)
+        run("docker restart nextcloud-aio-talk", sudo=True, dry_run=self.dry_run)
         return self.status()
 
     def undo(self) -> StepResult:
         self.log("Conservative undo: stopping Talk container (config kept in AIO)")
-        run("docker stop nextcloud-aio-talk", dry_run=self.dry_run)
+        run("docker stop nextcloud-aio-talk", sudo=True, dry_run=self.dry_run)
         self.mark_undone()
         return StepResult(self.name, True, "Talk container stopped")

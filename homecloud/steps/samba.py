@@ -35,16 +35,32 @@ class SambaStep(Step):
 
         # Ensure share dir exists
         run(f"mkdir -p {SAMBA_SHARE_DIR}", sudo=True, dry_run=self.dry_run)
-        run(f"chown -R {user}:{user} {SAMBA_SHARE_DIR}", sudo=True, dry_run=self.dry_run)
 
-        # Set Samba password for user
+        # Ensure the samba user exists as a system user
+        if not self.dry_run:
+            id_check = run(f"id -u {user}", sudo=True, capture=True)
+            if not id_check.ok:
+                return StepResult(
+                    self.name, False,
+                    f"System user '{user}' does not exist. Create it first: sudo useradd -m {user}",
+                )
+
+        r = run(f"chown -R {user}:{user} {SAMBA_SHARE_DIR}", sudo=True, dry_run=self.dry_run)
+        if not r.ok and not self.dry_run:
+            return StepResult(self.name, False, f"chown failed: {r.stderr}", r.stderr)
+
+        # Ensure system user exists in Samba and set password
         pw = self.cfg.samba_password
         if pw:
             self.log(f"Setting Samba password for {user}...")
-            run(
-                f"(echo '{pw}'; echo '{pw}') | smbpasswd -a {user}",
+            # smbpasswd reads password twice from stdin (confirm + set)
+            r = run(
+                f"smbpasswd -a -s {user}",
                 sudo=True, dry_run=self.dry_run, capture=True,
+                input_text=f"{pw}\n{pw}\n",
             )
+            if not r.ok and not self.dry_run:
+                return StepResult(self.name, False, f"smbpasswd failed: {r.stderr}", r.stderr)
 
         # Add share to smb.conf (idempotent)
         self._ensure_share_config(user)

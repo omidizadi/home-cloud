@@ -41,7 +41,7 @@ class NextcloudAioStep(Step):
             "ghcr.io/nextcloud-releases/all-in-one:latest"
         )
         self.log("Launching Nextcloud AIO master container...")
-        r = run(cmd, dry_run=self.dry_run, timeout=120)
+        r = run(cmd, sudo=True, dry_run=self.dry_run, timeout=120)
         if not r.ok and not self.dry_run:
             return StepResult(self.name, False, f"AIO launch failed: {r.stderr}", r.stderr)
 
@@ -79,7 +79,7 @@ class NextcloudAioStep(Step):
 
     def repair(self) -> StepResult:
         self.log("Restarting AIO master container...")
-        run(f"docker restart {AIO_MASTER_CONTAINER}", dry_run=self.dry_run)
+        run(f"docker restart {AIO_MASTER_CONTAINER}", sudo=True, dry_run=self.dry_run)
         return self.status()
 
     def undo(self) -> StepResult:
@@ -101,9 +101,9 @@ class NextcloudAioStep(Step):
             "nextcloud-aio-clamav",
             "nextcloud-aio-fulltextsearch",
         ]:
-            run(f"docker stop {c}", dry_run=self.dry_run)
-            run(f"docker rm -f {c}", dry_run=self.dry_run)
+            run(f"docker stop {c}", sudo=True, dry_run=self.dry_run)
+            run(f"docker rm -f {c}", sudo=True, dry_run=self.dry_run)
         # Remove the master volume (config only, not user data)
-        run("docker volume rm nextcloud_aio_mastercontainer", dry_run=self.dry_run)
+        run("docker volume rm nextcloud_aio_mastercontainer", sudo=True, dry_run=self.dry_run)
         self.mark_undone()
         return StepResult(self.name, True, "AIO containers removed (user data on SSD preserved)")

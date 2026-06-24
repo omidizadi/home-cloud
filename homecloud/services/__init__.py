@@ -123,7 +123,7 @@ def remove_replug_support(*, dry_run: bool = False) -> None:
 
 def container_status(name: str) -> str:
     """Return running/exited/not-found."""
-    r = run(f"docker inspect --format='{{{{.State.Status}}}}' {name}", capture=True)
+    r = run(f"docker inspect --format='{{{{.State.Status}}}}' {name}", sudo=True, capture=True)
     out = r.stdout.strip()
     if r.ok and out:
         return out
@@ -135,23 +135,22 @@ def container_running(name: str) -> bool:
 
 
 def restart_container(name: str, *, dry_run: bool = False) -> Result:
-    return run(f"docker restart {name}", dry_run=dry_run)
+    return run(f"docker restart {name}", sudo=True, dry_run=dry_run)
 
 
 def stop_container(name: str, *, dry_run: bool = False) -> Result:
-    return run(f"docker stop {name}", dry_run=dry_run)
+    return run(f"docker stop {name}", sudo=True, dry_run=dry_run)
 
 
 def remove_container(name: str, *, dry_run: bool = False) -> Result:
-    return run(f"docker rm -f {name}", dry_run=dry_run)
+    return run(f"docker rm -f {name}", sudo=True, dry_run=dry_run)
 
 
 def list_containers(all_: bool = False) -> list[dict]:
     """List containers as dicts."""
     flag = "-a" if all_ else ""
     r = run(
-        f"docker ps {flag} --format '{{{{.Names}}}}\\t{{{{.Image}}}}\\t{{{{.Status}}}}'",
-        capture=True,
+        f"docker ps {flag} --format '{{{{.Names}}}}\\t{{{{.Image}}}}\\t{{{{.Status}}}}'",        sudo=True,        capture=True,
     )
     containers = []
     if r.ok:
