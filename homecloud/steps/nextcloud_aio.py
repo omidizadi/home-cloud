@@ -62,33 +62,20 @@ class NextcloudAioStep(Step):
         return StepResult(
             self.name, True,
             f"AIO master container running. Open {url} to complete setup.",
-            "OPEN THE AIO PANEL IN YOUR BROWSER:
-"
-            f"  1. Go to https://<pi-ip>:{AIO_ADMIN_PORT} (accept cert warning)
-"
-            "     If Tailscale is set up: https://<pi-tailscale-ip>:8080
-"
-            "  2. Enter your domain (e.g. yoursub.duckdns.org)
-"
-            "     If domain validation fails (DS-Lite/CGNAT), skip it:
-"
-            "       sudo docker exec nextcloud-aio-mastercontainer \
-            touch /mnt/docker-aio-config/secret/danger-skip-domain-validation
-"
-            "       sudo docker restart nextcloud-aio-mastercontainer
-"
-            "  3. Pick optional containers: Talk ✅, Collabora optional, skip ClamAV/FTS
-"
-            "  4. Set the admin password
-"
-            "  5. Click 'Start containers' (takes 5-10 min on a Pi)
-"
-            "  6. Once done → Nextcloud is live:
-"
-            "       LAN:        https://<pi-ip>
-"
-            "       Tailscale:  https://<pi-tailscale-ip>
-"
+            "OPEN THE AIO PANEL IN YOUR BROWSER:\n"
+            f"  1. Go to https://<pi-ip>:{AIO_ADMIN_PORT} (accept cert warning)\n"
+            "     If Tailscale is set up: https://<pi-tailscale-ip>:8080\n"
+            "  2. Enter your domain (e.g. yoursub.duckdns.org)\n"
+            "     If domain validation fails (DS-Lite/CGNAT), skip it:\n"
+            "       sudo docker exec nextcloud-aio-mastercontainer \\\n"
+            "         touch /mnt/docker-aio-config/secret/danger-skip-domain-validation\n"
+            "       sudo docker restart nextcloud-aio-mastercontainer\n"
+            "  3. Pick optional containers: Talk ✅, Collabora optional, skip ClamAV/FTS\n"
+            "  4. Set the admin password\n"
+            "  5. Click 'Start containers' (takes 5-10 min on a Pi)\n"
+            "  6. Once done → Nextcloud is live:\n"
+            "       LAN:        https://<pi-ip>\n"
+            "       Tailscale:  https://<pi-tailscale-ip>\n"
             "       Public:     https://yoursub.duckdns.org (needs real public IPv4)",
         )
 
