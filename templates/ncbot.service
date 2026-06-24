@@ -1,0 +1,17 @@
+[Unit]
+Description=Nextcloud Telegram Bot
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt
+ExecStart=/opt/ncbot-env/bin/python3 /opt/ncbot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
