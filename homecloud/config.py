@@ -246,7 +246,7 @@ def export_recovery_bundle(output_path: Path | None = None) -> Path:
     }
 
     if output_path is None:
-        output_path = Path.cwd() / "homecloud-recovery-bundle.json"
+        output_path = Path.home() / "homecloud-recovery-bundle.json"
     output_path.write_text(json.dumps(bundle, indent=2))
     try:
         os.chmod(output_path, 0o600)
