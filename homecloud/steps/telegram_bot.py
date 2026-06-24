@@ -236,7 +236,7 @@ class TelegramBotStep(Step):
                         try:
                             users = json.loads(users_raw)
                             lines = [f"• `{{u}}`" for u in users]
-                            return f"👥 *Users (no usage-report app)*\n" + "\n".join(lines[:30])
+                            return f"👥 *Users (no usage-report app)*\\n" + "\\n".join(lines[:30])
                         except Exception:
                             pass
                     return "❌ Could not fetch user usage. Install the 'usage_report' app in Nextcloud."
@@ -255,14 +255,14 @@ class TelegramBotStep(Step):
                         last_login = last_login[:10]
                     lines.append(f"• `{{uid}}`: {{used}} / {{quota_str}} (last login: {{last_login}})")
                 return (
-                    f"👥 *Per-User Usage*\n📅 {{datetime.now().strftime('%d %b %Y %H:%M')}}\n\n"
-                    + "\n".join(lines[:40])
+                    f"👥 *Per-User Usage*\\n📅 {{datetime.now().strftime('%d %b %Y %H:%M')}}\\n\\n"
+                    + "\\n".join(lines[:40])
                 )
             async def cmd_start(update, ctx):
                 await update.message.reply_text(
                     "👋 *Nextcloud Bot Online!*\\n\\n"
                     "/status — quick health check\\n"
-                    "/report — full daily report\\n"                    "/users — per-user storage usage\n"                    "/backup — backup status + S3 snapshots\\n"
+                    "/report — full daily report\\n"                    "/users — per-user storage usage\\n"                    "/backup — backup status + S3 snapshots\\n"
                     "/runbackup — trigger a backup NOW\\n"
                     "/logs — last 30 lines of backup log\\n"
                     "/help — show this menu",
