@@ -438,12 +438,31 @@ chunking — only *changed* chunks are uploaded. Add 500MB of new photos → onl
 
 ### S3 Lifecycle rule (manual, one-time)
 
-In the AWS Console → your bucket → **Management** → **Lifecycle rules**:
-
-- Transition objects in the `data/` prefix to **Glacier Deep Archive** after 1 day
-
 This keeps restic's tiny `index/` and `keys/` files in S3 Standard (so restic
-can read them without a Glacier restore) while the bulk data moves to Deep Archive.
+can read them without a Glacier restore) while the bulk data moves to Deep
+Archive. Without this rule everything stays in S3 Standard and you pay ~10×
+more for storage.
+
+In the AWS Console: **S3** → your bucket → **Management** tab →
+**Lifecycle rules** → **Create lifecycle rule**, then fill in:
+
+1. **Lifecycle rule name** — e.g. `restic-to-deep-archive`.
+2. **Choose a rule scope** — select **Limit the scope of this rule using one or
+   more filters**, and in the **Prefix** box enter `data/` (this is where
+   restic stores the actual backup chunks; `index/` and `keys/` are left in
+   S3 Standard so restic can list/read them instantly).
+3. **Lifecycle rule actions** — tick **Transition current versions of objects
+   between storage classes**.
+4. **Transition** — choose:
+   - **Storage class**: `Glacier Deep Archive`
+   - **Days after object creation**: `1`
+5. Review the rule summary (it should read roughly: *"Transition current
+   versions to Glacier Deep Archive after 1 day(s) for objects with prefix
+   `data/`"*) and click **Create rule**.
+
+> That's it. New nightly backup chunks land in S3 Standard, then within ~24 h
+> AWS moves them to Glacier Deep Archive automatically. No further action
+   needed — restic is unaware of the transition and keeps working normally.
 
 ---
 
