@@ -42,7 +42,7 @@ services:
 
   database:
     container_name: immich-postgres
-    image: docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
     environment:
       POSTGRES_PASSWORD: {{ db_password }}
       POSTGRES_USER: postgres
@@ -53,6 +53,6 @@ services:
       - /etc/localtime:/etc/localtime:ro
     healthcheck:
       test: pg_isready --dbname='immich' --username='postgres' || exit 1
-      interval: 5m
-      start_period: 5m
+      interval: 10s
+      start_period: 30s
     restart: always
