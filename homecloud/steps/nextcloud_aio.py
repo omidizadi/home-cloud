@@ -50,10 +50,21 @@ class NextcloudAioStep(Step):
                 "Run the Tailscale step first, then re-run this step.",
             )
 
+        # Store the tailnet hostname in config so other steps (coturn, etc.) can use it.
+        self.cfg.nextcloud_domain = ts_fqdn
+
+        # Update AIO's stored domain before launching (so Caddy never tries
+        # Let's Encrypt for a DuckDNS domain that can't work on CGNAT).
+        self._update_aio_domain(ts_fqdn)
+
         # Remove existing master container so we can re-create with the
         # reverse-proxy env vars (AIO does not let you change these after start).
         if container_status(AIO_MASTER_CONTAINER) != "not-found" and not self.dry_run:
             self.log("Removing existing AIO master container to re-create with reverse-proxy config...")
+            # Free :443 and remove old Apache (still on :443 with old domain).
+            run("tailscale serve reset", sudo=True, capture=True)
+            run("docker stop nextcloud-aio-apache", sudo=True, capture=True)
+            run("docker rm -f nextcloud-aio-apache", sudo=True, capture=True)
             remove_container(AIO_MASTER_CONTAINER, dry_run=self.dry_run)
 
         cmd = (
@@ -92,6 +103,21 @@ class NextcloudAioStep(Step):
                     self.name, False, f"AIO admin panel not reachable on :{AIO_ADMIN_PORT}"
                 )
 
+        # Wire Tailscale Serve → AIO Apache (:11000).
+        self.log("Configuring Tailscale Serve (https://<tailnet> → http://127.0.0.1:11000)...")
+        if not self.dry_run:
+            run("tailscale serve reset", sudo=True, capture=True)
+            r = run(
+                f"tailscale serve --bg --https=443 http://127.0.0.1:{AIO_APACHE_PORT}",
+                sudo=True, capture=True, timeout=60,
+            )
+            if not r.ok:
+                return StepResult(
+                    self.name, False,
+                    "Tailscale Serve failed to start",
+                    r.stderr or r.stdout,
+                )
+
         self.mark_done({
             "admin_port": AIO_ADMIN_PORT,
             "apache_port": AIO_APACHE_PORT,
@@ -110,7 +136,7 @@ class NextcloudAioStep(Step):
             "  4. Set the admin password\n"
             "  5. Click 'Start containers' (takes 5-10 min on a Pi)\n"
             "  6. Once containers are up, run the *repair* action of this step\n"
-            "     to wire Tailscale Serve → AIO and fix trusted_domains.\n"
+            "     to set trusted_domains and verify Nextcloud is live.\n"
             "     Nextcloud will then be live at:\n"
             f"       https://{ts_fqdn}\n"
             "     (reachable from any device on your tailnet — no port forwarding)",

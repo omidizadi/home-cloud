@@ -455,8 +455,6 @@ class HomeCloudApp:
         cfg = self.cfg
         fields_map = [
             ("ssd_device", "SSD device (e.g. /dev/sda)"),
-            ("duckdns_domain", "DuckDNS subdomain (e.g. omid)"),
-            ("duckdns_token", "DuckDNS token"),
             ("aws_access_key_id", "AWS Access Key ID"),
             ("aws_secret_access_key", "AWS Secret Access Key"),
             ("s3_bucket", "S3 bucket name"),

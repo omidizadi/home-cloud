@@ -11,7 +11,6 @@ purposes only.
 | `ncbot.py` | Interactive Telegram bot | `steps/telegram_bot.py` |
 | `ncbot.service` | systemd unit for the bot | `steps/telegram_bot.py` |
 | `smb.conf.snippet` | Samba share config | `steps/samba.py` |
-| `duckdns.sh` | DuckDNS IP updater | `steps/duckdns.py` |
 | `docker-wait-for-ssd.conf` | systemd override making Docker wait for SSD | `steps/hardening.py` |
 
 If you ever need to manually recreate a file (e.g. after a SD card failure),

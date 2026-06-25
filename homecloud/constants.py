@@ -20,7 +20,6 @@ BORG_BACKUP_DIR = NCDATA_MOUNT / "borg-backup"
 
 # Script / service locations
 BACKUP_SCRIPT = Path("/opt/nextcloud-s3-backup.sh")
-DUCKDNS_SCRIPT = Path("/opt/duckdns/duck.sh")
 BOT_SCRIPT = Path("/opt/ncbot.py")
 BOT_VENV = Path("/opt/ncbot-env")
 BOT_SERVICE = Path("/etc/systemd/system/ncbot.service")

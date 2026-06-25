@@ -3,7 +3,6 @@
 from .base import Step, StepResult
 from .coturn import CoturnStep
 from .docker import DockerStep
-from .duckdns import DuckDnsStep
 from .hardening import HardeningStep
 from .nextcloud_aio import NextcloudAioStep
 from .restic_s3 import ResticS3Step
@@ -18,7 +17,6 @@ ALL_STEPS = [
     DockerStep,
     TailscaleStep,
     NextcloudAioStep,
-    DuckDnsStep,
     CoturnStep,
     SambaStep,
     WifiStep,
@@ -34,7 +32,6 @@ __all__ = [
     "SsdStep",
     "DockerStep",
     "NextcloudAioStep",
-    "DuckDnsStep",
     "TailscaleStep",
     "CoturnStep",
     "SambaStep",

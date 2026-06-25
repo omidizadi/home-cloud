@@ -11,10 +11,10 @@ class CoturnStep(Step):
     name = "coturn"
     label = "Configure Talk (Coturn)"
     description = "Guide enabling Nextcloud Talk with AIO's built-in Coturn TURN server"
-    depends_on = ["nextcloud_aio", "duckdns"]
+    depends_on = ["nextcloud_aio"]
 
     def run(self) -> StepResult:
-        domain = self.cfg.nextcloud_domain or f"{self.cfg.duckdns_domain}.duckdns.org"
+        domain = self.cfg.nextcloud_domain or "<pi>.<tailnet>.ts.net"
         self.log(f"Configuring Talk with domain {domain}")
 
         # This step is mostly guidance — AIO handles Coturn automatically.

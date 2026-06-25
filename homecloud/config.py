@@ -34,10 +34,6 @@ class Config:
     ssd_device: str = ""  # e.g. /dev/sda
     ssd_label: str = "ncdata"
 
-    # ── DuckDNS ──
-    duckdns_domain: str = ""  # e.g. omid (becomes omid.duckdns.org)
-    duckdns_token: str = ""
-
     # ── AWS S3 ──
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
@@ -53,7 +49,9 @@ class Config:
 
     # ── Nextcloud ──
     nextcloud_admin_password: str = ""
-    nextcloud_domain: str = ""  # derived from duckdns_domain if empty
+    # Set at runtime by NextcloudAioStep from the Tailscale tailnet hostname
+    # (e.g. homecloud.tail665a7d.ts.net). Not in .env, not required for is_complete().
+    nextcloud_domain: str = ""
 
     # ── Tailscale (external access, bypasses DS-Lite/CGNAT) ──
     tailscale_auth_key: str = ""  # tskey-... from https://login.tailscale.com/admin/settings/keys
@@ -73,8 +71,9 @@ class Config:
     _internal: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
-        if not self.nextcloud_domain and self.duckdns_domain:
-            self.nextcloud_domain = f"{self.duckdns_domain}.duckdns.org"
+        # nextcloud_domain is set at runtime by the NextcloudAioStep
+        # using the Tailscale tailnet hostname.
+        pass
 
     @property
     def restic_repository(self) -> str:
@@ -82,14 +81,12 @@ class Config:
 
     @property
     def nextcloud_url(self) -> str:
-        return f"https://{self.nextcloud_domain}"
+        return f"https://{self.nextcloud_domain}" if self.nextcloud_domain else "https://<pi>.<tailnet>.ts.net"
 
     def is_complete(self) -> bool:
         """True if all required fields are set."""
         required = [
             "ssd_device",
-            "duckdns_domain",
-            "duckdns_token",
             "aws_access_key_id",
             "aws_secret_access_key",
             "s3_bucket",
@@ -105,8 +102,6 @@ class Config:
     def missing_fields(self) -> list[str]:
         required = [
             "ssd_device",
-            "duckdns_domain",
-            "duckdns_token",
             "aws_access_key_id",
             "aws_secret_access_key",
             "s3_bucket",
@@ -185,10 +180,6 @@ def validate(cfg: Config) -> list[str]:
     errors: list[str] = []
     if not cfg.ssd_device.startswith("/dev/"):
         errors.append("SSD device must be a /dev/ path (e.g. /dev/sda)")
-    if cfg.duckdns_domain and not all(
-        c in string.ascii_lowercase + string.digits + "-" for c in cfg.duckdns_domain
-    ):
-        errors.append("DuckDNS domain must be lowercase alphanumeric/dashes")
     if cfg.s3_bucket and not all(
         c in string.ascii_lowercase + string.digits + ".-" for c in cfg.s3_bucket
     ):

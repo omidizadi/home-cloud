@@ -2,8 +2,8 @@
 
 An interactive installer & manager for a **Raspberry Pi 5** home cloud built on
 **Nextcloud AIO**, with nightly **deduplicated S3 Glacier Deep Archive** backups,
-a **Samba** share, **DuckDNS**, **Nextcloud Talk** (video calls), and an
-interactive **Telegram bot** for status reports.
+a **Samba** share, **Tailscale** (mesh VPN for external access), **Nextcloud Talk**
+(video calls), and an interactive **Telegram bot** for status reports.
 
 > Designed for a Raspberry Pi 5 (8GB RAM, 128GB SD card) with a 5TB external SSD.
 > Conservative uninstall: **never touches your data on the SSD**.
@@ -36,9 +36,10 @@ interactive **Telegram bot** for status reports.
 - **Nextcloud AIO** — photos (Memories), files, and Talk (1-1 video calls)
 - **5TB SSD** as the data directory (SD card stays for OS/Docker only)
 - **Samba share** — access the SSD for non-Nextcloud files without detaching it
-- **DuckDNS** — free dynamic DNS + automatic Let's Encrypt TLS
-- **Tailscale** — WireGuard mesh VPN for external access (bypasses DS-Lite/CGNAT,
-  no port forwarding needed, no bandwidth/timeout limits like Cloudflare Tunnel)
+- **Tailscale** — WireGuard mesh VPN for external access + automatic TLS certs
+  (bypasses DS-Lite/CGNAT, no port forwarding needed, no bandwidth/timeout
+  limits like Cloudflare Tunnel). Nextcloud is served at
+  `https://<pi>.<tailnet>.ts.net` with a valid cert issued by Tailscale.
 - **Nextcloud Talk** — 1-1 video calls via AIO's built-in Coturn TURN server
   (works over Tailscale — no port forwarding required)
 - **Nightly restic backup → S3 Glacier Deep Archive** — block-level deduplication
@@ -69,7 +70,7 @@ interactive **Telegram bot** for status reports.
 │  │             │   │  └────────────────────────────┘ │  │
 │  └─────────────┘   └─────────────────────────────────┘  │
 │                                                         │
-│  Services: Docker · Samba · ncbot (Telegram) · DuckDNS  │
+│  Services: Docker · Samba · ncbot (Telegram) · Tailscale │
 └───────────────────────┬─────────────────────────────────┘
                         │
                         │ nightly restic (deduplicated)
@@ -116,7 +117,7 @@ the interactive CLI menu.
 
 | Menu option | What it does |
 | :-- | :-- |
-| **📥 Install / Configure** | First: edit config (SSD, DuckDNS, AWS, Telegram, etc.), then run all install steps |
+| **📥 Install / Configure** | First: edit config (SSD, AWS, Telegram, etc.), then run all install steps |
 | **📊 Status Dashboard** | View of containers, disk, services, backup, install steps |
 | **🔄 Update** | Update homecloud itself, Nextcloud, bot deps, restic |
 | **🔧 Repair** | Re-check and re-run any failed steps |
@@ -163,21 +164,21 @@ filesystem, the installer mounts it as-is.
 > Tip: unplug the SSD, run `lsblk`, plug it back in, run `lsblk` again — the new
 > entry is your SSD.
 
-### DuckDNS domain + token (`duckdns_domain`, `duckdns_token`)
+### Tailscale auth key (`tailscale_auth_key`, optional)
 
-1. Go to <https://www.duckdns.org> and sign in with GitHub/Google/Reddit.
-2. Add a subdomain (e.g. `omid`) — this becomes `omid.duckdns.org`.
-   Enter just the subdomain part (`omid`), not the full URL.
-3. Copy the long **token** shown at the top of the page — it's a UUID like
-   `a1b2c3d4-e5f6-7890-abcd-ef1234567890`.
+Tailscale provides the domain (`<pi>.<tailnet>.ts.net`) and TLS certificate
+for Nextcloud. It works on DS-Lite/CGNAT — no port forwarding or public IPv4
+needed.
 
-The installer uses this for:
-- Dynamic DNS updates (so `omid.duckdns.org` always points to your home IP)
-- Let's Encrypt TLS certificates for Nextcloud
+1. Create a Tailscale account at <https://login.tailscale.com/start>.
+2. (Optional) Generate an auth key at
+   <https://login.tailscale.com/admin/settings/keys> for non-interactive
+   setup. If you leave this blank, the installer will print a login URL.
+3. Install the Tailscale client on your phone/laptop from
+   <https://tailscale.com/download> to access Nextcloud from those devices.
 
-> Make sure your router forwards ports **80** and **443** to the Pi's local IP.
-> For Talk video calls, also forward **3478** and **5349** (TCP+UDP). See
-> [Port forwarding](#step-1-port-forwarding-on-your-router) for the full table.
+> No port forwarding needed. Tailscale punches through NAT/DS-Lite via its
+> WireGuard mesh. The Pi gets a stable `100.x.y.z` IP and a MagicDNS name.
 
 ### AWS S3 credentials (`aws_access_key_id`, `aws_secret_access_key`)
 
@@ -278,15 +279,14 @@ What gets installed, in order:
 | :-: | :-- | :-- |
 | 1 | **SSD mount** | Format (if needed) + mount 5TB SSD at `/mnt/ncdata`, add to fstab |
 | 2 | **Docker** | Install Docker Engine, add user to docker group |
-| 3 | **Nextcloud AIO** | Launch master container with `NEXTCLOUD_DATADIR` on SSD |
-| 4 | **DuckDNS** | Dynamic DNS updater (5-min cron) for free domain + TLS |
-| 5 | **Tailscale** | WireGuard mesh VPN for external access (bypasses DS-Lite/CGNAT) |
-| 6 | **Talk (Coturn)** | Guide enabling AIO's built-in TURN server for video calls |
-| 7 | **Samba** | Network share at `/mnt/ncdata/files` for non-Nextcloud files |
-| 8 | **WiFi** | (Optional) Connect via NetworkManager |
-| 9 | **restic + S3** | Init repo, deploy nightly backup script (3 AM cron) |
-| 10 | **Telegram bot** | Interactive bot as systemd service, daily 8 AM report |
-| 11 | **Hardening** | Docker→SSD dependency, fsck, verify all services auto-start |
+| 3 | **Tailscale** | WireGuard mesh VPN for external access + TLS certs (bypasses DS-Lite/CGNAT) |
+| 4 | **Nextcloud AIO** | Launch master container behind Tailscale Serve (reverse-proxy mode) |
+| 5 | **Talk (Coturn)** | Guide enabling AIO's built-in TURN server for video calls |
+| 6 | **Samba** | Network share at `/mnt/ncdata/files` for non-Nextcloud files |
+| 7 | **WiFi** | (Optional) Connect via NetworkManager |
+| 8 | **restic + S3** | Init repo, deploy nightly backup script (3 AM cron) |
+| 9 | **Telegram bot** | Interactive bot as systemd service, daily 8 AM report |
+| 10 | **Hardening** | Docker→SSD dependency, fsck, verify all services auto-start |
 
 Each step is **idempotent** — running it twice is safe. Completed steps are
 tracked via marker files in `/etc/homecloud/state/`.
@@ -384,11 +384,10 @@ Pi is reachable from the internet on port 443. The installer launches AIO
 with `SKIP_DOMAIN_VALIDATION=true`, so **validation is skipped automatically**
 — no manual steps needed. This works even on DS-Lite/CGNAT (no real public IPv4).
 
-The domain is just used internally by AIO for config (TLS cert generation,
-Coturn, etc.). You don't actually access Nextcloud through it — you use the
-Tailscale IP.
-
-Just enter your DuckDNS domain (e.g. `omid.duckdns.org`) and submit.
+The domain is the Tailscale tailnet hostname (e.g.
+`homecloud.tail665a7d.ts.net`), which the installer enters automatically.
+Tailscale Serve terminates TLS with a valid cert and forwards to AIO's
+Apache on port 11000 — no Let's Encrypt or port forwarding needed.
 
 **3. Pick optional containers:**
 | Container | Recommended? | Why |
@@ -410,9 +409,8 @@ This takes 5–10 minutes on a Pi. You'll see progress in the panel.
 
 | Where you are | URL |
 | :-- | :-- |
-| Over Tailscale | `https://<pi-tailscale-ip>` |
-| Same LAN | `https://<pi-ip>` |
-| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
+| Over Tailscale | `https://<pi>.<tailnet>.ts.net` (e.g. `https://homecloud.tail665a7d.ts.net`) |
+| Same LAN | `https://<pi-ip>` (self-signed cert, accept warning) |
 
 Log in with username `admin` and the password you set in step 4.
 
@@ -423,13 +421,12 @@ Log in with username `admin` and the password you set in step 4.
 
 ### Step 4: Access Nextcloud (daily use)
 
-Once AIO containers are running, pick the URL that matches where you are:
+Once AIO containers are running, access Nextcloud at:
 
-| Where | URL |
-| :-- | :-- |
-| Same LAN | `https://<pi-ip>` |
-| Over Tailscale | `https://<pi-tailscale-ip>` |
-| Public internet | `https://<your-subdomain>.duckdns.org` (needs real public IPv4) |
+`https://<pi>.<tailnet>.ts.net` (e.g. `https://homecloud.tail665a7d.ts.net`)
+
+This works from any device on your tailnet (phone, laptop, etc. with
+Tailscale installed). The cert is valid — no browser warnings.
 
 Log in with the admin username (`admin`) and the Nextcloud admin password from
 your config.
@@ -643,7 +640,6 @@ In the AWS Console: **S3** → your bucket → **Management** tab →
 
 All secrets live in `/etc/homecloud/.env` (permissions `0600`, root-owned):
 
-- DuckDNS token
 - AWS access key + secret
 - S3 bucket name
 - restic repository password
@@ -796,7 +792,6 @@ home-cloud/
 │   │   ├── ssd.py
 │   │   ├── docker.py
 │   │   ├── nextcloud_aio.py
-│   │   ├── duckdns.py
 │   │   ├── coturn.py
 │   │   ├── samba.py
 │   │   ├── wifi.py
