@@ -202,9 +202,9 @@ class TelegramBotStep(Step):
             def build_quick_status():
                 uptime = run("uptime -p")
                 cpu_temp = run("vcgencmd measure_temp | cut -d= -f2")
-                mem = run("free -h | awk '/^Mem:/ {{print $3\"/\"$2}}'")
+                mem = run("free -h | awk '/^Mem:/ {{print $3\\\"/\\\"$2}}'")
                 cpu = run("top -bn1 | grep 'Cpu' | awk '{{print $2}}' | cut -d% -f1")
-                ssd = run("df -h /mnt/data | awk 'NR==2 {{print $3\"/\"$2\" (\"$5\")\"}}'")
+                ssd = run("df -h /mnt/data | awk 'NR==2 {{print $3\\\"/\\\"$2\\\" (\\\"$5\\\")\\\"}}'")
                 immich_status = run("docker inspect --format='{{{{.State.Status}}}}' immich-server 2>/dev/null")
                 bk = parse_backup_log()
                 return (
@@ -224,10 +224,10 @@ class TelegramBotStep(Step):
                 bk = parse_backup_log()
                 uptime = run("uptime -p")
                 cpu_temp = run("vcgencmd measure_temp | cut -d= -f2")
-                mem = run("free -h | awk '/^Mem:/ {{print $3\"/\"$2}}'")
+                mem = run("free -h | awk '/^Mem:/ {{print $3\\\"/\\\"$2}}'")
                 cpu = run("top -bn1 | grep 'Cpu' | awk '{{print $2}}' | cut -d% -f1")
-                ssd = run("df -h /mnt/data | awk 'NR==2 {{print $3\"/\"$2\" (\"$5\")\"}}'")
-                sd = run("df -h / | awk 'NR==2 {{print $3\"/\"$2\" (\"$5\")\"}}'")
+                ssd = run("df -h /mnt/data | awk 'NR==2 {{print $3\\\"/\\\"$2\\\" (\\\"$5\\\")\\\"}}'")
+                sd = run("df -h / | awk 'NR==2 {{print $3\\\"/\\\"$2\\\" (\\\"$5\\\")\\\"}}'")
                 immich_block = "❌ Immich API unavailable (set immich_api_key in config)"
                 if stats:
                     immich_block = (
