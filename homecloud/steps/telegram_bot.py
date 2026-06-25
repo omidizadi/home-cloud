@@ -111,7 +111,9 @@ class TelegramBotStep(Step):
 
             TELEGRAM_TOKEN = "{self.cfg.telegram_bot_token}"
             CHAT_ID = "{self.cfg.telegram_chat_id}"
-            IMMICH_URL = "{self.cfg.immich_url}"
+            # Use localhost, not the Tailscale HTTPS URL: the Pi runs with
+            # --accept-dns=false and cannot resolve its own MagicDNS name.
+            IMMICH_URL = "http://127.0.0.1:2283"
             IMMICH_API_KEY = "{self.cfg.immich_api_key}"
             BACKUP_LOG = "/var/log/homecloud-backup.log"
             IMMICH_DATA_PATH = "/mnt/data/immich"
@@ -145,7 +147,7 @@ class TelegramBotStep(Step):
                     return None
                 try:
                     r = requests.get(
-                        f"{{IMMICH_URL}}/api/server-info/statistics",
+                        f"{{IMMICH_URL}}/api/server/statistics",
                         headers=immich_headers(),
                         timeout=15,
                     )
@@ -239,7 +241,9 @@ class TelegramBotStep(Step):
                 jobs_block = ""
                 if jobs:
                     active = [name for name, info in jobs.items()
-                              if isinstance(info, dict) and info.get("queueStatus") == "active"]
+                              if isinstance(info, dict)
+                              and isinstance(info.get("queueStatus"), dict)
+                              and info["queueStatus"].get("isActive")]
                     if active:
                         jobs_block = f"\\n🔄 Active jobs: `{{', '.join(active)}}`"
                 return (
@@ -273,10 +277,17 @@ class TelegramBotStep(Step):
                 for name, info in jobs.items():
                     if not isinstance(info, dict):
                         continue
-                    status = info.get("queueStatus", "?")
-                    active = info.get("active", 0)
-                    waiting = info.get("waiting", 0)
-                    icon = "🔄" if status == "active" else "⏸" if status == "paused" else "✅"
+                    qs = info.get("queueStatus", {{}})
+                    if not isinstance(qs, dict):
+                        qs = {{}}
+                    jc = info.get("jobCounts", {{}})
+                    if not isinstance(jc, dict):
+                        jc = {{}}
+                    is_paused = qs.get("isPaused", False)
+                    is_active = qs.get("isActive", False)
+                    active = jc.get("active", 0)
+                    waiting = jc.get("waiting", 0)
+                    icon = "🔄" if is_active else ("⏸" if is_paused else "✅")
                     lines.append(f"• {{icon}} `{{name}}`: {{active}} active, {{waiting}} waiting")
                 return (
                     f"🔄 *Immich Jobs*\\n📅 {{datetime.now().strftime('%d %b %Y %H:%M')}}\\n\\n"
