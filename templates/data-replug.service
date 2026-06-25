@@ -1,16 +1,16 @@
 # homecloud: hot-replug service — called by udev when the SSD reappears.
-# Installed to /etc/systemd/system/ncdata-replug.service
+# Installed to /etc/systemd/system/data-replug.service
 #
 # Sequence:
 #   1. fsck the partition (safe, read-only check unless corruption found)
-#   2. mount /mnt/ncdata
-#   3. restart Docker (containers auto-restart via --restart=always)
-#   4. restart Nextcloud AIO master so it cascades to all children
+#   2. mount /mnt/data
+#   3. restart Docker (containers auto-restart via restart: always)
+#   4. restart the Immich stack
 
 [Unit]
 Description=Home Cloud: remount SSD and restart services after hot-replug
-After=mnt-ncdata.mount
-Requires=mnt-ncdata.mount
+After=mnt-data.mount
+Requires=mnt-data.mount
 # Only run once, don't queue duplicates
 Type=oneshot
 RemainAfterExit=no

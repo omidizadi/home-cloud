@@ -1,10 +1,10 @@
-"""Step 1: Mount the 5TB SSD at /mnt/ncdata."""
+"""Step 1: Mount the 5TB SSD at /mnt/data."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..constants import BORG_BACKUP_DIR, NCDATA_MOUNT, NEXTCLOUD_DATADIR, SAMBA_SHARE_DIR
+from ..constants import DATA_MOUNT, IMMICH_DATADIR
 from ..utils import read_file_sudo, run
 from .base import Step, StepResult
 
@@ -12,7 +12,7 @@ from .base import Step, StepResult
 class SsdStep(Step):
     name = "ssd"
     label = "Mount 5TB SSD"
-    description = "Format (if needed) and mount the external SSD at /mnt/ncdata"
+    description = "Format (if needed) and mount the external SSD at /mnt/data"
     depends_on: list[str] = []
 
     def run(self) -> StepResult:
@@ -38,7 +38,7 @@ class SsdStep(Step):
                 return StepResult(self.name, False, f"Format failed: {r.stderr}", r.stderr)
 
         # Create mount point
-        run(f"mkdir -p {NCDATA_MOUNT}", sudo=True, dry_run=self.dry_run)
+        run(f"mkdir -p {DATA_MOUNT}", sudo=True, dry_run=self.dry_run)
 
         # Add to fstab (idempotent)
         self._ensure_fstab_entry(part)
@@ -50,21 +50,15 @@ class SsdStep(Step):
 
         # Verify mounted
         if not self.dry_run:
-            r = run(f"findmnt --source {part} --target {NCDATA_MOUNT}", capture=True)
+            r = run(f"findmnt --source {part} --target {DATA_MOUNT}", capture=True)
             if not r.ok:
-                return StepResult(self.name, False, f"{NCDATA_MOUNT} not mounted")
+                return StepResult(self.name, False, f"{DATA_MOUNT} not mounted")
 
-        # Create subdirectories
-        for d, uid, gid in [
-            (NEXTCLOUD_DATADIR, 33, 33),  # www-data
-            (SAMBA_SHARE_DIR, 1000, 1000),
-            (BORG_BACKUP_DIR, 0, 0),
-        ]:
-            run(f"mkdir -p {d}", sudo=True, dry_run=self.dry_run)
-            run(f"chown -R {uid}:{gid} {d}", sudo=True, dry_run=self.dry_run)
+        # Create Immich data directory (containers manage their own perms)
+        run(f"mkdir -p {IMMICH_DATADIR}", sudo=True, dry_run=self.dry_run)
 
-        self.mark_done({"device": dev, "partition": part, "mount": str(NCDATA_MOUNT)})
-        return StepResult(self.name, True, f"SSD mounted at {NCDATA_MOUNT}")
+        self.mark_done({"device": dev, "partition": part, "mount": str(DATA_MOUNT)})
+        return StepResult(self.name, True, f"SSD mounted at {DATA_MOUNT}")
 
     def _detect_partition(self, dev: str) -> str:
         """Find the first partition of the device."""
@@ -87,13 +81,13 @@ class SsdStep(Step):
 
     def _ensure_fstab_entry(self, part: str) -> None:
         """Idempotently add the SSD to /etc/fstab."""
-        entry = f"LABEL={self.cfg.ssd_label}  {NCDATA_MOUNT}  ext4  defaults,nofail  0  2"
+        entry = f"LABEL={self.cfg.ssd_label}  {DATA_MOUNT}  ext4  defaults,nofail  0  2"
         if self.dry_run:
             self.log(f"[dry-run] would add fstab entry: {entry}")
             return
         fstab = Path("/etc/fstab")
         content = read_file_sudo(fstab) or ""
-        if str(NCDATA_MOUNT) in content:
+        if str(DATA_MOUNT) in content:
             self.log("fstab entry already exists")
             return
         r = run(f"bash -c 'echo \"{entry}\" >> {fstab}'", sudo=True)
@@ -103,23 +97,23 @@ class SsdStep(Step):
     def status(self) -> StepResult:
         if self.dry_run:
             return StepResult(self.name, True, "[dry-run]")
-        r = run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True)
+        r = run(f"findmnt -n -o TARGET {DATA_MOUNT}", capture=True)
         if r.ok:
-            usage = run(f"df -h {NCDATA_MOUNT}", capture=True).stdout
+            usage = run(f"df -h {DATA_MOUNT}", capture=True).stdout
             return StepResult(self.name, True, "Mounted", usage)
-        return StepResult(self.name, False, f"{NCDATA_MOUNT} not mounted")
+        return StepResult(self.name, False, f"{DATA_MOUNT} not mounted")
 
     def undo(self) -> StepResult:
         """Conservative: unmount and remove fstab entry, but DO NOT format/erase."""
         self.log("Conservative undo: unmounting SSD (data preserved)")
-        run(f"umount {NCDATA_MOUNT}", sudo=True, dry_run=self.dry_run)
+        run(f"umount {DATA_MOUNT}", sudo=True, dry_run=self.dry_run)
         # Remove fstab entry
         if not self.dry_run:
             fstab = Path("/etc/fstab")
             content = read_file_sudo(fstab) or ""
             new_lines = [
                 ln for ln in content.splitlines()
-                if str(NCDATA_MOUNT) not in ln
+                if str(DATA_MOUNT) not in ln
             ]
             run(f"bash -c 'cat > {fstab} <<\"EOF\"\n" + "\n".join(new_lines) + "\nEOF'", sudo=True)
         self.mark_undone()

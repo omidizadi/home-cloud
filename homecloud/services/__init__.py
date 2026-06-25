@@ -55,7 +55,7 @@ def unit_enabled(name: str) -> bool:
     return run(f"systemctl is-enabled {name}", capture=True).stdout.strip() == "enabled"
 
 
-def write_docker_ssd_dependency(mount_point: str = "/mnt/ncdata", *, dry_run: bool = False) -> None:
+def write_docker_ssd_dependency(mount_point: str = "/mnt/data", *, dry_run: bool = False) -> None:
     """Make Docker wait for the SSD mount before starting."""
     unit = mount_point.replace("/", "-").strip("-")
     content = (
@@ -67,7 +67,7 @@ def write_docker_ssd_dependency(mount_point: str = "/mnt/ncdata", *, dry_run: bo
     daemon_reload(dry_run=dry_run)
 
 
-def install_replug_support(ssd_label: str = "ncdata", *, dry_run: bool = False) -> list[str]:
+def install_replug_support(ssd_label: str = "data", *, dry_run: bool = False) -> list[str]:
     """Install udev rule + systemd service + shell script for SSD hot-replug.
 
     Returns a list of issues encountered (empty = success).
@@ -77,7 +77,7 @@ def install_replug_support(ssd_label: str = "ncdata", *, dry_run: bool = False) 
     issues: list[str] = []
 
     # 1. udev rule
-    udev_tpl = (TEMPLATES_DIR / "99-ncdata.rules").read_text()
+    udev_tpl = (TEMPLATES_DIR / "99-data.rules").read_text()
     udev_content = udev_tpl.replace("{{SSD_LABEL}}", ssd_label)
     if dry_run:
         log.info("[dry-run] would write udev rule: %s", REPLUG_UDEV_RULE)
@@ -88,7 +88,7 @@ def install_replug_support(ssd_label: str = "ncdata", *, dry_run: bool = False) 
     log.info("udev rule installed: %s", REPLUG_UDEV_RULE)
 
     # 2. systemd service
-    svc_tpl = (TEMPLATES_DIR / "ncdata-replug.service").read_text()
+    svc_tpl = (TEMPLATES_DIR / "data-replug.service").read_text()
     if dry_run:
         log.info("[dry-run] would write service: %s", REPLUG_SERVICE)
     else:

@@ -1,5 +1,5 @@
 [Unit]
-Description=Nextcloud Telegram Bot
+Description=Home Cloud Telegram Bot (Immich)
 After=network-online.target docker.service
 Wants=network-online.target
 
@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=root
 WorkingDirectory=/opt
-ExecStart=/opt/ncbot-env/bin/python3 /opt/ncbot.py
+ExecStart=/opt/homecloud-bot-env/bin/python3 /opt/homecloud-bot.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

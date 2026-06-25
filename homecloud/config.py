@@ -32,7 +32,7 @@ class Config:
 
     # ── SSD ──
     ssd_device: str = ""  # e.g. /dev/sda
-    ssd_label: str = "ncdata"
+    ssd_label: str = "data"
 
     # ── AWS S3 ──
     aws_access_key_id: str = ""
@@ -47,18 +47,19 @@ class Config:
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
-    # ── Nextcloud ──
-    nextcloud_admin_password: str = ""
-    # Set at runtime by NextcloudAioStep from the Tailscale tailnet hostname
+    # ── Immich ──
+    # Auto-generated secrets (set blank to generate during config):
+    immich_jwt_secret: str = ""
+    immich_db_password: str = ""
+    # API key generated in the Immich web UI post-install (manual entry).
+    # The bot needs this to query the Immich REST API.
+    immich_api_key: str = ""
+    # Set at runtime by ImmichStep from the Tailscale tailnet hostname
     # (e.g. homecloud.tail665a7d.ts.net). Not in .env, not required for is_complete().
-    nextcloud_domain: str = ""
+    immich_domain: str = ""
 
     # ── Tailscale (external access, bypasses DS-Lite/CGNAT) ──
     tailscale_auth_key: str = ""  # tskey-... from https://login.tailscale.com/admin/settings/keys
-
-    # ── Samba ──
-    samba_user: str = ""
-    samba_password: str = ""
 
     # ── WiFi (optional) ──
     wifi_ssid: str = ""
@@ -71,7 +72,7 @@ class Config:
     _internal: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def __post_init__(self) -> None:
-        # nextcloud_domain is set at runtime by the NextcloudAioStep
+        # immich_domain is set at runtime by the ImmichStep
         # using the Tailscale tailnet hostname.
         pass
 
@@ -80,8 +81,8 @@ class Config:
         return f"s3:s3.{self.s3_region}.amazonaws.com/{self.s3_bucket}"
 
     @property
-    def nextcloud_url(self) -> str:
-        return f"https://{self.nextcloud_domain}" if self.nextcloud_domain else "https://<pi>.<tailnet>.ts.net"
+    def immich_url(self) -> str:
+        return f"https://{self.immich_domain}" if self.immich_domain else "https://<pi>.<tailnet>.ts.net"
 
     def is_complete(self) -> bool:
         """True if all required fields are set."""
@@ -93,9 +94,8 @@ class Config:
             "restic_password",
             "telegram_bot_token",
             "telegram_chat_id",
-            "nextcloud_admin_password",
-            "samba_user",
-            "samba_password",
+            "immich_jwt_secret",
+            "immich_db_password",
         ]
         return all(getattr(self, f) for f in required)
 
@@ -108,9 +108,8 @@ class Config:
             "restic_password",
             "telegram_bot_token",
             "telegram_chat_id",
-            "nextcloud_admin_password",
-            "samba_user",
-            "samba_password",
+            "immich_jwt_secret",
+            "immich_db_password",
         ]
         return [f for f in required if not getattr(self, f)]
 
@@ -211,7 +210,7 @@ def export_recovery_bundle(output_path: Path | None = None) -> Path:
     The bundle includes:
       - all .env values
       - restic repo location
-      - nextcloud domain
+      - immich URL
       - install state markers
       - a restore command hint
 
@@ -234,7 +233,7 @@ def export_recovery_bundle(output_path: Path | None = None) -> Path:
         "config": {f.name: getattr(cfg, f.name) for f in fields(Config) if not f.name.startswith("_")},
         "derived": {
             "restic_repository": cfg.restic_repository,
-            "nextcloud_url": cfg.nextcloud_url,
+            "immich_url": cfg.immich_url,
         },
         "install_state": all_steps(),
     }

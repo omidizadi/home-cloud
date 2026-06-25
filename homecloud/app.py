@@ -11,7 +11,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import Config, export_recovery_bundle, generate_password, load_config, save_config, validate
-from .constants import CONFIG_DIR, INSTALL_DIR, LOG_DIR, NCDATA_MOUNT, STATE_DIR, VENV_DIR
+from .constants import CONFIG_DIR, DATA_MOUNT, INSTALL_DIR, LOG_DIR, STATE_DIR, VENV_DIR
 from .services import container_status, unit_status
 from .steps import ALL_STEPS
 from .utils import has_sudo, is_pi5, is_root, log, run, setup_logging, which
@@ -151,7 +151,7 @@ class HomeCloudApp:
             print("  Use Repair (option 4) to retry failed steps.")
         else:
             _ok("All steps completed successfully!")
-            print("  Next: open https://<pi-ip>:8080 to finish Nextcloud AIO setup.")
+            print("  Next: open https://<pi-ip>:2283 to create your Immich admin account.")
         _pause()
 
     def menu_status(self) -> None:
@@ -168,20 +168,20 @@ class HomeCloudApp:
 
         # Disk
         print("\n━━ Disk ━━")
-        ssd = run("df -h /mnt/ncdata 2>/dev/null | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}'", capture=True).stdout.strip()
+        ssd = run("df -h /mnt/data 2>/dev/null | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}'", capture=True).stdout.strip()
         sd = run("df -h / 2>/dev/null | awk 'NR==2 {print $3\"/\"$2\" (\"$5\")\"}'", capture=True).stdout.strip()
-        print(f"  SSD (/mnt/ncdata): {ssd or 'not mounted'}")
+        print(f"  SSD (/mnt/data): {ssd or 'not mounted'}")
         print(f"  SD card (/):       {sd or 'N/A'}")
 
         # Services
         print("\n━━ Services ━━")
-        for svc in ["docker", "smbd", "ncbot", "cron", "tailscaled"]:
+        for svc in ["docker", "homecloud-bot", "cron", "tailscaled"]:
             st = unit_status(svc)
             print(f"  {'✅' if st == 'active' else '❌'} {svc}: {st}")
 
         # Containers
         print("\n━━ Containers ━━")
-        for c in ["nextcloud-aio-mastercontainer", "nextcloud-aio-nextcloud", "nextcloud-aio-talk"]:
+        for c in ["immich-server", "immich-machine-learning", "immich-postgres", "immich-redis"]:
             st = container_status(c)
             print(f"  {'✅' if st == 'running' else '❌'} {c}: {st}")
 
@@ -199,7 +199,7 @@ class HomeCloudApp:
 
         # Backup
         print("\n━━ Backup ━━")
-        backup_log = Path("/var/log/nextcloud-s3-backup.log")
+        backup_log = Path("/var/log/homecloud-backup.log")
         if file_exists_sudo(backup_log):
             content = read_file_sudo(backup_log) or ""
             if "=== Backup finished" in content.split("=== Backup started")[-1]:
@@ -218,22 +218,20 @@ class HomeCloudApp:
         while True:
             _header("🔄 Update")
             print("  1. homecloud (git pull + pip install)")
-            print("  2. Nextcloud (AIO)")
+            print("  2. Immich (docker compose pull + up)")
             print("  3. Telegram bot deps")
             print("  4. restic")
-            print("  5. Samba")
-            print("  6. Update all")
+            print("  5. Update all")
             print("  0. Back")
             choice = input("\nChoice: ").strip()
             if choice == "0":
                 return
             actions = {
                 "1": self._update_self,
-                "2": self._update_nextcloud,
+                "2": self._update_immich,
                 "3": self._update_bot,
                 "4": self._update_restic,
-                "5": self._update_samba,
-                "6": self._update_all,
+                "5": self._update_all,
             }
             action = actions.get(choice)
             if action:
@@ -260,7 +258,7 @@ class HomeCloudApp:
         _header("🗑️ Uninstall")
         print("⚠️  This removes ALL services, containers, AND the homecloud")
         print("    code itself (repo, venv, CLI wrapper, config, state, logs).")
-        print("    Your data on the SSD (/mnt/ncdata) will NOT be touched.")
+        print("    Your data on the SSD (/mnt/data) will NOT be touched.")
         if not _confirm("\nProceed with full uninstall?"):
             return
 
@@ -280,7 +278,7 @@ class HomeCloudApp:
         clear_all()
         print()
         self._nuke_self()
-        _ok("Uninstall complete. Your data is safe on the SSD at /mnt/ncdata")
+        _ok("Uninstall complete. Your data is safe on the SSD at /mnt/data")
         print("homecloud is gone. Reinstall with the install.sh bootstrap script.")
         _pause()
 
@@ -314,9 +312,9 @@ class HomeCloudApp:
         while True:
             _header("💽 SSD: Plug / Unplug")
             # Show current mount state
-            mounted = run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok
+            mounted = run(f"findmnt -n -o TARGET {DATA_MOUNT}", capture=True).ok
             state = "mounted ✅" if mounted else "not mounted ❌"
-            print(f"  Current state: /mnt/ncdata is {state}")
+            print(f"  Current state: /mnt/data is {state}")
             print()
             print("  1. ⏏️  Safely unplug SSD (stop services + unmount)")
             print("  2. 🔌 Plug in SSD (mount + restart services)")
@@ -332,16 +330,16 @@ class HomeCloudApp:
                 _fail("Invalid choice")
 
     def _ssd_unplug(self) -> None:
-        """Stop Nextcloud + Docker, then unmount the SSD so it can be unplugged."""
+        """Stop Immich + Docker, then unmount the SSD so it can be unplugged."""
         _header("⏏️  Safely Unplug SSD")
-        if not run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
-            _info(f"{NCDATA_MOUNT} is not mounted — safe to unplug now.")
+        if not run(f"findmnt -n -o TARGET {DATA_MOUNT}", capture=True).ok:
+            _info(f"{DATA_MOUNT} is not mounted — safe to unplug now.")
             _pause()
             return
         print("This will:")
-        print(f"  1. Stop the Nextcloud AIO master container")
-        print("  2. Stop Docker (all containers)")
-        print(f"  3. Unmount {NCDATA_MOUNT}")
+        print(f"  1. Stop the Immich stack (docker compose down)")
+        print(f"  2. Stop Docker (all containers)")
+        print(f"  3. Unmount {DATA_MOUNT}")
         print("  4. Tell you it's safe to physically unplug the drive")
         print()
         if not _confirm("Proceed?"):
@@ -351,20 +349,24 @@ class HomeCloudApp:
             _pause()
             return
 
-        _info("Stopping Nextcloud AIO master container...")
-        run("docker stop nextcloud-aio-mastercontainer", sudo=True, capture=True)
+        from .constants import IMMICH_COMPOSE_DIR
+        _info("Stopping Immich stack...")
+        run(
+            f"docker compose -f {IMMICH_COMPOSE_DIR / 'docker-compose.yml'} down",
+            sudo=True, capture=True,
+        )
         _info("Stopping Docker...")
         run("systemctl stop docker", sudo=True, capture=True)
-        _info(f"Unmounting {NCDATA_MOUNT}...")
-        r = run(f"umount {NCDATA_MOUNT}", sudo=True, capture=True)
+        _info(f"Unmounting {DATA_MOUNT}...")
+        r = run(f"umount {DATA_MOUNT}", sudo=True, capture=True)
         if not r.ok:
             _fail(f"umount failed: {r.stderr.strip()}")
             _info("Docker is stopped. You can retry after freeing handles:")
-            print(f"  sudo lsof +f -- {NCDATA_MOUNT}")
+            print(f"  sudo lsof +f -- {DATA_MOUNT}")
             _pause()
             return
         # Confirm
-        if run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
+        if run(f"findmnt -n -o TARGET {DATA_MOUNT}", capture=True).ok:
             _fail("still mounted — do NOT unplug. Investigate with lsof.")
             _pause()
             return
@@ -374,10 +376,10 @@ class HomeCloudApp:
         _pause()
 
     def _ssd_plug(self) -> None:
-        """Mount the SSD and restart Docker + Nextcloud AIO."""
+        """Mount the SSD and restart Docker + Immich."""
         _header("🔌 Plug in SSD")
-        if run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
-            _ok(f"{NCDATA_MOUNT} is already mounted.")
+        if run(f"findmnt -n -o TARGET {DATA_MOUNT}", capture=True).ok:
+            _ok(f"{DATA_MOUNT} is already mounted.")
             _info("Restarting services to be safe...")
         else:
             if self.dry_run:
@@ -386,7 +388,7 @@ class HomeCloudApp:
                 return
             _info("Waiting for device to appear...")
             # Try to resolve the device from the fstab LABEL
-            label = self.cfg.ssd_label or "ncdata"
+            label = self.cfg.ssd_label or "data"
             dev = run(f"blkid -L {label}", capture=True).stdout.strip()
             if not dev:
                 _fail(f"No device found with LABEL={label}.")
@@ -396,12 +398,12 @@ class HomeCloudApp:
             _info(f"Found device: {dev}")
             _info("Running fsck (read-only check)...")
             run(f"fsck -n {dev}", sudo=True, capture=True)
-            _info(f"Mounting {NCDATA_MOUNT}...")
-            r = run(f"mount {NCDATA_MOUNT}", sudo=True, capture=True)
+            _info(f"Mounting {DATA_MOUNT}...")
+            r = run(f"mount {DATA_MOUNT}", sudo=True, capture=True)
             if not r.ok:
                 # Fallback to mount -a in case the fstab uses a different spec
                 r = run("mount -a", sudo=True, capture=True)
-            if not run(f"findmnt -n -o TARGET {NCDATA_MOUNT}", capture=True).ok:
+            if not run(f"findmnt -n -o TARGET {DATA_MOUNT}", capture=True).ok:
                 _fail(f"mount failed: {r.stderr.strip()}")
                 _pause()
                 return
@@ -421,33 +423,36 @@ class HomeCloudApp:
                 break
             _time.sleep(1)
 
-        # Wait for the database container to be running and accepting connections.
+        # Wait for the Immich postgres container to be running and accepting connections.
         # After a Docker restart containers come up in undefined order — if
-        # Nextcloud starts before the database it will crash-loop on
-        # "could not translate host name nextcloud-aio-database to address".
-        _info("Waiting for database to be ready...")
+        # immich-server starts before the database it will crash-loop.
+        _info("Waiting for Immich postgres to be ready...")
         for i in range(1, 61):
             st = run(
-                "docker inspect -f '{{.State.Status}}' nextcloud-aio-database",
+                "docker inspect -f '{{.State.Status}}' immich-postgres",
                 sudo=True, capture=True,
             ).stdout.strip()
             if st == "running":
                 if run(
-                    "docker exec nextcloud-aio-database pg_isready -U nextcloud",
+                    "docker exec immich-postgres pg_isready -U postgres",
                     sudo=True, capture=True,
                 ).ok:
-                    _ok(f"Database ready ({i}s)")
+                    _ok(f"Immich postgres ready ({i}s)")
                     break
             if i == 60:
-                _fail("Database not ready after 60s — proceeding anyway")
+                _fail("Immich postgres not ready after 60s — proceeding anyway")
             _time.sleep(1)
         # Brief grace period for Docker-internal DNS propagation
         _time.sleep(3)
 
-        _info("Restarting Nextcloud AIO master container...")
-        run("docker restart nextcloud-aio-mastercontainer", sudo=True, capture=True)
+        _info("Restarting Immich stack...")
+        from .constants import IMMICH_COMPOSE_DIR
+        run(
+            f"docker compose -f {IMMICH_COMPOSE_DIR / 'docker-compose.yml'} up -d",
+            sudo=True, capture=True,
+        )
         _ok("SSD is back online. Services are restarting.")
-        _info("Check progress with: journalctl -u ncdata-replug.service -f")
+        _info("Check progress with: journalctl -u data-replug.service -f")
         _pause()
 
     def menu_config(self) -> None:
@@ -462,10 +467,10 @@ class HomeCloudApp:
             ("restic_password", "restic password (blank=generate)"),
             ("telegram_bot_token", "Telegram bot token (123:ABC...)"),
             ("telegram_chat_id", "Telegram chat ID"),
-            ("nextcloud_admin_password", "Nextcloud admin password (blank=generate)"),
+            ("immich_jwt_secret", "Immich JWT secret (blank=generate)"),
+            ("immich_db_password", "Immich DB password (blank=generate)"),
+            ("immich_api_key", "Immich API key (from web UI Settings → API Keys)"),
             ("tailscale_auth_key", "Tailscale auth key (blank=interactive login)"),
-            ("samba_user", "Samba username"),
-            ("samba_password", "Samba password (blank=generate)"),
             ("wifi_ssid", "WiFi SSID (blank=Ethernet)"),
             ("wifi_password", "WiFi password"),
             ("timezone", "Timezone (default: Europe/Berlin)"),
@@ -504,12 +509,12 @@ class HomeCloudApp:
         if not cfg.restic_password:
             cfg.restic_password = generate_password()
             print(f"  Generated restic password: {cfg.restic_password}")
-        if not cfg.nextcloud_admin_password:
-            cfg.nextcloud_admin_password = generate_password(20)
-            print(f"  Generated Nextcloud admin password: {cfg.nextcloud_admin_password}")
-        if not cfg.samba_password:
-            cfg.samba_password = generate_password(20)
-            print(f"  Generated Samba password: {cfg.samba_password}")
+        if not cfg.immich_jwt_secret:
+            cfg.immich_jwt_secret = generate_password(48)
+            print(f"  Generated Immich JWT secret: {cfg.immich_jwt_secret}")
+        if not cfg.immich_db_password:
+            cfg.immich_db_password = generate_password(32)
+            print(f"  Generated Immich DB password: {cfg.immich_db_password}")
 
         errors = validate(cfg)
         if errors:
@@ -586,59 +591,43 @@ class HomeCloudApp:
         else:
             _fail(r.stderr)
 
-    def _update_nextcloud(self) -> None:
-        print("\n━━ ☁️ Nextcloud (AIO) ━━")
+    def _update_immich(self) -> None:
+        print("\n━━ 📸 Immich ━━")
         if self.dry_run:
-            _info("dry-run: would run occ upgrade + maintenance:mode")
+            _info("dry-run: would docker compose pull + up")
             return
-        nc_status = run(
-            "docker inspect --format='{{.State.Status}}' nextcloud-aio-nextcloud 2>/dev/null",
-            capture=True,
-        ).stdout.strip()
-        if nc_status != "running":
-            _fail("Nextcloud container is not running. Start it via AIO panel first.")
+        from .constants import IMMICH_COMPOSE_DIR
+        compose_file = IMMICH_COMPOSE_DIR / "docker-compose.yml"
+        if not file_exists_sudo(compose_file):
+            _fail("Immich compose file not found. Run the install first.")
             return
-        if not _confirm(
-            "Update Nextcloud? This will:\n"
-            "  1. Put Nextcloud in maintenance mode\n"
-            "  2. Run occ upgrade\n"
-            "  3. Take Nextcloud offline briefly"
-        ):
+        if not _confirm("Update Immich? (docker compose pull + up -d, brief downtime)"):
             return
-        _info("Checking for available updates...")
+        _info("Pulling new images...")
         r = run(
-            "docker exec --user www-data nextcloud-aio-nextcloud php occ update:check",
-            capture=True, sudo=True, timeout=60,
+            f"docker compose -f {compose_file} pull",
+            sudo=True, capture=True, timeout=300,
         )
         print(r.stdout.strip() or r.stderr.strip())
-        if "up to date" in r.stdout.lower():
-            _ok("Nextcloud is up to date.")
-            return
-        if not _confirm("Updates are available. Proceed with upgrade?"):
-            return
-        _info("Enabling maintenance mode...")
-        run("docker exec --user www-data nextcloud-aio-nextcloud php occ maintenance:mode --on", sudo=True, capture=True)
-        _info("Running upgrade...")
+        _info("Recreating containers...")
         r = run(
-            "docker exec --user www-data nextcloud-aio-nextcloud php occ upgrade",
-            capture=True, sudo=True, timeout=600,
+            f"docker compose -f {compose_file} up -d",
+            sudo=True, capture=True, timeout=300,
         )
         print(r.stdout.strip() or r.stderr.strip())
-        _info("Disabling maintenance mode...")
-        run("docker exec --user www-data nextcloud-aio-nextcloud php occ maintenance:mode --off", sudo=True, capture=True)
         if r.ok:
-            _ok("Nextcloud upgraded.")
+            _ok("Immich updated.")
         else:
-            _fail("Upgrade may have failed. Check output above.")
+            _fail("Update may have failed. Check output above.")
 
     def _update_bot(self) -> None:
         print("\n━━ 🤖 Bot deps ━━")
         if self.dry_run:
-            _info("dry-run: would pip upgrade + restart ncbot")
+            _info("dry-run: would pip upgrade + restart homecloud-bot")
             return
         if not _confirm("Update Telegram bot dependencies? (pip upgrade + restart bot)"):
             return
-        from .constants import BOT_VENV
+        from .constants import BOT_VENV, BOT_SERVICE_NAME
         r = run(
             f"{BOT_VENV}/bin/pip install --upgrade --quiet "
             "python-telegram-bot APScheduler requests",
@@ -646,7 +635,7 @@ class HomeCloudApp:
         )
         if r.ok:
             _ok("bot deps updated. Restarting bot...")
-            run("systemctl restart ncbot", sudo=True)
+            run(f"systemctl restart {BOT_SERVICE_NAME}", sudo=True)
             _ok("bot restarted")
         else:
             _fail(r.stderr)
@@ -673,37 +662,12 @@ class HomeCloudApp:
         else:
             _fail(r.stderr)
 
-    def _update_samba(self) -> None:
-        print("\n━━ 📁 Samba ━━")
-        if not which("smbd"):
-            _fail("smbd not installed")
-            return
-        current = run("smbd --version", capture=True).stdout.strip()
-        print(f"Current: {current}")
-        if self.dry_run:
-            _info("dry-run: would apt update + apt install --only-upgrade samba")
-            return
-        if not _confirm("Update Samba via apt? (brief share interruption)"):
-            return
-        _info("Running apt update...")
-        run("apt-get update -qq", sudo=True, timeout=120, capture=True)
-        _info("Upgrading Samba...")
-        r = run("apt-get install -y --only-upgrade samba samba-common-bin", sudo=True, timeout=120, capture=True)
-        if r.ok:
-            _info("Restarting smbd...")
-            run("systemctl restart smbd", sudo=True)
-            new = run("smbd --version", capture=True).stdout.strip()
-            _ok(f"Samba updated: {new}")
-        else:
-            _fail(r.stderr)
-
     def _update_all(self) -> None:
         print("\n━━ ✨ Update All ━━")
         self._update_self()
-        self._update_nextcloud()
+        self._update_immich()
         self._update_bot()
         self._update_restic()
-        self._update_samba()
         print("\n━━ All updates complete ━━")
 
     # -- main loop -------------------------------------------------------------
@@ -808,5 +772,5 @@ def import_secrets(path: str) -> None:
     """CLI subcommand: import recovery bundle."""
     from .config import import_recovery_bundle
     cfg = import_recovery_bundle(Path(path))
-    print(f"Imported config. Nextcloud domain: {cfg.nextcloud_domain or '(not set)'}")
+    print(f"Imported config. Immich URL: {cfg.immich_url}")
     print("Run 'homecloud' to continue installation.")

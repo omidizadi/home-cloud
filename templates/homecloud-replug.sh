@@ -2,11 +2,12 @@
 # homecloud: hot-replug recovery script.
 # Installed to /usr/local/bin/homecloud-replug.sh
 #
-# Called by ncdata-replug.service when the SSD reappears after being unplugged.
-# Logs everything to syslog (visible via: journalctl -u ncdata-replug.service).
+# Called by data-replug.service when the SSD reappears after being unplugged.
+# Logs everything to syslog (visible via: journalctl -u data-replug.service).
 set -euo pipefail
 
-MOUNT_POINT="/mnt/ncdata"
+MOUNT_POINT="/mnt/data"
+COMPOSE_FILE="/opt/homecloud/immich/docker-compose.yml"
 LOG_TAG="homecloud-replug"
 
 log() {
@@ -20,7 +21,7 @@ log "=== SSD hot-replug recovery started ==="
 DEVICE=$(findmnt -n -o SOURCE "$MOUNT_POINT" 2>/dev/null || true)
 if [ -z "$DEVICE" ]; then
     # Mount is gone — try to resolve from fstab LABEL
-    LABEL=$(grep "$MOUNT_POINT" /etc/fstab 2>/dev/null | head -1 | grep -oP 'LABEL=\K\S+' || echo "ncdata")
+    LABEL=$(grep "$MOUNT_POINT" /etc/fstab 2>/dev/null | head -1 | grep -oP 'LABEL=\K\S+' || echo "data")
     DEVICE=$(blkid -L "$LABEL" 2>/dev/null || true)
     if [ -z "$DEVICE" ]; then
         log "ERROR: could not find SSD device by label $LABEL"
@@ -49,7 +50,7 @@ fi
 # 3. Brief settle — let the kernel flush device nodes
 sleep 2
 
-# 4. Restart Docker (containers with --restart=always will recover in undefined order)
+# 4. Restart Docker (containers with restart: always will recover)
 log "Restarting Docker..."
 systemctl restart docker 2>&1 || true
 
@@ -62,32 +63,33 @@ for i in $(seq 1 30); do
     sleep 1
 done
 
-# 5. Wait for the database container to be running and accepting connections.
-#    After a Docker restart, containers come up in undefined order.
-#    If Nextcloud starts before the database, it loops on
-#    "could not translate host name nextcloud-aio-database to address".
-#    So we explicitly wait for the DB to be ready before restarting the master.
-log "Waiting for database container to be ready..."
-DB_CONTAINER="nextcloud-aio-database"
+# 5. Wait for the Immich postgres container to be running and accepting
+#    connections. After a Docker restart, containers come up in undefined
+#    order. If immich-server starts before the database, it will crash-loop.
+log "Waiting for Immich postgres to be ready..."
+DB_CONTAINER="immich-postgres"
 for i in $(seq 1 60); do
     STATUS=$(docker inspect -f '{{.State.Status}}' "$DB_CONTAINER" 2>/dev/null || echo "missing")
     if [ "$STATUS" = "running" ]; then
-        # Container is running — check if PostgreSQL accepts connections
-        if docker exec "$DB_CONTAINER" pg_isready -U nextcloud >/dev/null 2>&1; then
-            log "Database is ready (took ${i}s)"
+        if docker exec "$DB_CONTAINER" pg_isready -U postgres >/dev/null 2>&1; then
+            log "Immich postgres is ready (took ${i}s)"
             break
         fi
     fi
     if [ "$i" -eq 60 ]; then
-        log "WARNING: database not ready after 60s — proceeding anyway"
+        log "WARNING: Immich postgres not ready after 60s — proceeding anyway"
     fi
     sleep 1
 done
 # Small extra grace period for DNS propagation inside Docker network
 sleep 3
 
-# 6. Restart Nextcloud AIO master container (cascades to all AIO children)
-log "Restarting Nextcloud AIO..."
-docker restart nextcloud-aio-mastercontainer 2>&1 || true
+# 6. Restart the Immich stack via docker compose
+log "Restarting Immich stack..."
+if [ -f "$COMPOSE_FILE" ]; then
+    docker compose -f "$COMPOSE_FILE" up -d 2>&1 || true
+else
+    log "WARNING: compose file not found at $COMPOSE_FILE — skipping stack restart"
+fi
 
 log "=== SSD hot-replug recovery finished ==="

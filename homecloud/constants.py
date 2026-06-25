@@ -13,35 +13,34 @@ ENV_FILE = CONFIG_DIR / ".env"
 LOG_DIR = Path("/var/log/homecloud")
 
 # Data locations
-NCDATA_MOUNT = Path("/mnt/ncdata")
-NEXTCLOUD_DATADIR = NCDATA_MOUNT / "nextcloud"
-SAMBA_SHARE_DIR = NCDATA_MOUNT / "files"
-BORG_BACKUP_DIR = NCDATA_MOUNT / "borg-backup"
+DATA_MOUNT = Path("/mnt/data")
+IMMICH_DATADIR = DATA_MOUNT / "immich"
 
 # Script / service locations
-BACKUP_SCRIPT = Path("/opt/nextcloud-s3-backup.sh")
-BOT_SCRIPT = Path("/opt/ncbot.py")
-BOT_VENV = Path("/opt/ncbot-env")
-BOT_SERVICE = Path("/etc/systemd/system/ncbot.service")
+BACKUP_SCRIPT = Path("/opt/homecloud-backup.sh")
+BACKUP_LOG = Path("/var/log/homecloud-backup.log")
+BOT_SCRIPT = Path("/opt/homecloud-bot.py")
+BOT_VENV = Path("/opt/homecloud-bot-env")
+BOT_SERVICE = Path("/etc/systemd/system/homecloud-bot.service")
+BOT_SERVICE_NAME = "homecloud-bot"
 TAILSCALE_SERVICE = Path("/etc/systemd/system/tailscaled.service")
 DOCKER_SSD_OVERRIDE = Path("/etc/systemd/system/docker.service.d/wait-for-ssd.conf")
-REPLUG_UDEV_RULE = Path("/etc/udev/rules.d/99-ncdata.rules")
-REPLUG_SERVICE = Path("/etc/systemd/system/ncdata-replug.service")
+REPLUG_UDEV_RULE = Path("/etc/udev/rules.d/99-data.rules")
+REPLUG_SERVICE = Path("/etc/systemd/system/data-replug.service")
+REPLUG_SERVICE_NAME = "data-replug"
 REPLUG_SCRIPT = Path("/usr/local/bin/homecloud-replug.sh")
 
+# Immich compose location (compose files live on the SD card; data on the SSD)
+IMMICH_COMPOSE_DIR = Path("/opt/homecloud/immich")
+
 # Container names
-AIO_MASTER_CONTAINER = "nextcloud-aio-mastercontainer"
-AIO_NEXTCLOUD_CONTAINER = "nextcloud-aio-nextcloud"
+IMMICH_SERVER_CONTAINER = "immich-server"
+IMMICH_ML_CONTAINER = "immich-machine-learning"
+IMMICH_DB_CONTAINER = "immich-postgres"
+IMMICH_REDIS_CONTAINER = "immich-redis"
 
 # Ports
-AIO_ADMIN_PORT = 8080
-# Port AIO's Apache container listens on when running behind a reverse proxy
-# (Tailscale Serve). AIO's built-in Let's Encrypt is disabled in this mode.
-AIO_APACHE_PORT = 11000
-NEXTCLOUD_HTTPS_PORT = 443
-NEXTCLOUD_HTTP_PORT = 80
-TURN_PORT = 3478
-TURN_TLS_PORT = 5349
+IMMICH_WEB_PORT = 2283
 
 # GitHub
 GITHUB_REPO = "omidizadi/home-cloud"

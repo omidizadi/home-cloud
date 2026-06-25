@@ -5,19 +5,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from ..constants import BACKUP_SCRIPT, NEXTCLOUD_DATADIR
+from ..constants import BACKUP_LOG, BACKUP_SCRIPT, IMMICH_DATADIR, IMMICH_DB_CONTAINER
 from ..services import add_cron_block, remove_cron_block
 from ..utils import file_exists_sudo, read_file_sudo, run, which, write_file_sudo
 from .base import Step, StepResult
-
-BACKUP_LOG = Path("/var/log/nextcloud-s3-backup.log")
 
 
 class ResticS3Step(Step):
     name = "restic_s3"
     label = "Configure restic + S3 Backup"
     description = "Install restic, init S3 repo, deploy nightly backup script"
-    depends_on = ["nextcloud_aio"]
+    depends_on = ["immich"]
 
     def run(self) -> StepResult:
         # Install restic
@@ -95,18 +93,21 @@ if [ "$UPTIME_SECS" -lt 300 ]; then
     -d parse_mode="Markdown"
 fi
 
-# Wait for AIO borg backup if running
-while [ -f /mnt/ncdata/borg-backup/aio-lockfile ]; do
-  echo "Waiting for AIO borg backup to finish..."
-  sleep 60
-done
+# Dump the Immich postgres database before backing up files.
+# Immich stores all metadata (faces, albums, EXIF) in postgres — a
+# file-level snapshot of the data dir alone is NOT sufficient.
+echo "Dumping Immich postgres database..."
+docker exec {IMMICH_DB_CONTAINER} pg_dump -U postgres -d immich \\
+  --no-owner --no-privileges \\
+  | restic backup --stdin --tag immich-db --tag immich
 
+# Back up the Immich upload/library/profile/thumbs directories.
 restic backup \\
-  {NEXTCLOUD_DATADIR} \\
-  --tag nextcloud \\
+  {IMMICH_DATADIR} \\
+  --tag immich \\
   --exclude="*.tmp" \\
   --exclude="*/cache/*" \\
-  --exclude="*/updater-*" \\
+  --exclude="*/model-cache/*" \\
   -o s3.storage-class=DEEP_ARCHIVE
 
 restic forget \\

@@ -1,0 +1,7 @@
+# homecloud: auto-mount SSD and restart services when the external drive reappears.
+# Installed to /etc/udev/rules.d/99-data.rules
+#
+# The LABEL= check matches the SSD label set during install (default: data).
+# When the device is added (plugged in), we mount it and restart Docker + Immich.
+
+ACTION=="add", ENV{ID_FS_LABEL}=="{{SSD_LABEL}}", RUN+="/bin/systemctl start data-replug.service"

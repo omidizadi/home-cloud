@@ -25,12 +25,12 @@ class HardeningStep(Step):
 
         # 1. Docker waits for SSD mount
         self.log("Configuring Docker→SSD mount dependency...")
-        write_docker_ssd_dependency("/mnt/ncdata", dry_run=self.dry_run)
+        write_docker_ssd_dependency("/mnt/data", dry_run=self.dry_run)
 
         # 2. Verify fstab fsck pass number is 2 for SSD
         self.log("Verifying fstab fsck settings...")
         if not self.dry_run:
-            r = run("grep ncdata /etc/fstab", capture=True)
+            r = run("grep /mnt/data /etc/fstab", capture=True)
             if r.ok:
                 fields = r.stdout.split()
                 # last field should be 2
@@ -41,7 +41,7 @@ class HardeningStep(Step):
 
         # 3. Verify all services are enabled
         self.log("Verifying service auto-start...")
-        for svc in ["docker", "smbd", "ncbot", "cron", "tailscaled"]:
+        for svc in ["docker", "homecloud-bot", "cron", "tailscaled"]:
             if not unit_enabled(svc):
                 issues.append(f"{svc} is not enabled for boot")
                 run(f"systemctl enable {svc}", sudo=True, dry_run=self.dry_run)
@@ -71,7 +71,7 @@ class HardeningStep(Step):
             return StepResult(self.name, True, "[dry-run]")
         checks = []
         all_ok = True
-        for svc in ["docker", "smbd", "ncbot", "cron", "tailscaled"]:
+        for svc in ["docker", "homecloud-bot", "cron", "tailscaled"]:
             ok = unit_enabled(svc)
             checks.append(f"{svc}: {'✅' if ok else '❌'}")
             if not ok:

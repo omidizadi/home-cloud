@@ -1,9 +1,9 @@
 # 🏠 Home Cloud
 
 An interactive installer & manager for a **Raspberry Pi 5** home cloud built on
-**Nextcloud AIO**, with nightly **deduplicated S3 Glacier Deep Archive** backups,
-a **Samba** share, **Tailscale** (mesh VPN for external access), **Nextcloud Talk**
-(video calls), and an interactive **Telegram bot** for status reports.
+**Immich** (self-hosted photo/video backup), with nightly **deduplicated S3
+Glacier Deep Archive** backups, **Tailscale** (mesh VPN for external access),
+and an interactive **Telegram bot** for status reports.
 
 > Designed for a Raspberry Pi 5 (8GB RAM, 128GB SD card) with a 5TB external SSD.
 > Conservative uninstall: **never touches your data on the SSD**.
@@ -18,7 +18,6 @@ a **Samba** share, **Tailscale** (mesh VPN for external access), **Nextcloud Tal
 - [🔧 Configuration](#-configuration)
 - [📦 Installation Steps](#-installation-steps)
 - [🌐 Network & External Access](#-network--external-access)
-- [💾 Accessing Your Files](#-accessing-your-files)
 - [🤖 Telegram Bot](#-telegram-bot)
 - [💰 Backups & Costs](#-backups--costs)
 - [🔐 Secrets & Recovery](#-secrets--recovery)
@@ -33,19 +32,19 @@ a **Samba** share, **Tailscale** (mesh VPN for external access), **Nextcloud Tal
 
 ## ✨ Features
 
-- **Nextcloud AIO** — photos (Memories), files, and Talk (1-1 video calls)
+- **Immich** — self-hosted photo/video backup (like Google Photos) with face
+  detection, CLIP smart search, and albums. Full docker-compose stack:
+  server + machine-learning + redis + postgres.
 - **5TB SSD** as the data directory (SD card stays for OS/Docker only)
-- **Samba share** — access the SSD for non-Nextcloud files without detaching it
 - **Tailscale** — WireGuard mesh VPN for external access + automatic TLS certs
-  (bypasses DS-Lite/CGNAT, no port forwarding needed, no bandwidth/timeout
-  limits like Cloudflare Tunnel). Nextcloud is served at
+  (bypasses DS-Lite/CGNAT, no port forwarding needed). Immich is served at
   `https://<pi>.<tailnet>.ts.net` with a valid cert issued by Tailscale.
-- **Nextcloud Talk** — 1-1 video calls via AIO's built-in Coturn TURN server
-  (works over Tailscale — no port forwarding required)
 - **Nightly restic backup → S3 Glacier Deep Archive** — block-level deduplication
-  means you only pay for ~your actual data size, not `200GB × N nights`
+  means you only pay for ~your actual data size, not `200GB × N nights`.
+  Includes a `pg_dump` of the Immich postgres database so metadata (faces,
+  albums, EXIF) survives a restore.
 - **Interactive Telegram bot** — daily reports + on-demand commands
-  (`/status`, `/report`, `/backup`, `/runbackup`, `/logs`)
+  (`/status`, `/report`, `/jobs`, `/backup`, `/runbackup`, `/logs`)
 - **Reboot survival** — all services auto-start; Docker waits for SSD mount
 - **Dry-run mode** — preview every command before executing
 - **Recovery bundle** — export all secrets to a JSON file for offline safekeeping
@@ -60,17 +59,15 @@ a **Samba** share, **Tailscale** (mesh VPN for external access), **Nextcloud Tal
 │                   Raspberry Pi 5 (8GB)                   │
 │                                                         │
 │  ┌─────────────┐   ┌─────────────────────────────────┐  │
-│  │  SD Card    │   │        5TB SSD (/mnt/ncdata)    │  │
-│  │  (OS+Docker)│   │  ┌────────────┐ ┌────────────┐  │  │
-│  │             │   │  │ Nextcloud  │ │ Samba share│  │  │
-│  │             │   │  │ data dir   │ │ /files     │  │  │
-│  │             │   │  └────────────┘ └────────────┘  │  │
-│  │             │   │  ┌────────────────────────────┐ │  │
-│  │             │   │  │ Borg backup (local)        │ │  │
-│  │             │   │  └────────────────────────────┘ │  │
+│  │  SD Card    │   │        5TB SSD (/mnt/data)      │  │
+│  │  (OS+Docker)│   │  ┌────────────────────────────┐  │  │
+│  │             │   │  │ Immich data dir            │  │  │
+│  │  compose    │   │  │  uploads/ library/ thumbs/  │  │  │
+│  │  files      │   │  │  encoded-video/ profile/    │  │  │
+│  │             │   │  │  pgdata/ model-cache/      │  │  │
 │  └─────────────┘   └─────────────────────────────────┘  │
 │                                                         │
-│  Services: Docker · Samba · ncbot (Telegram) · Tailscale │
+│  Services: Docker · homecloud-bot (Telegram) · Tailscale │
 └───────────────────────┬─────────────────────────────────┘
                         │
                         │ nightly restic (deduplicated)
@@ -89,8 +86,8 @@ a **Samba** share, **Tailscale** (mesh VPN for external access), **Nextcloud Tal
 
 The fast path to a running home cloud. Detailed config values are in
 [🔧 Configuration](#-configuration); the full step list is in
-[📦 Installation Steps](#-installation-steps); external access and the one-time
-AIO browser setup are in [🌐 Network & External Access](#-network--external-access).
+[📦 Installation Steps](#-installation-steps); external access is in
+[🌐 Network & External Access](#-network--external-access).
 
 ### Step 0: Flash the OS (manual)
 
@@ -119,7 +116,7 @@ the interactive CLI menu.
 | :-- | :-- |
 | **📥 Install / Configure** | First: edit config (SSD, AWS, Telegram, etc.), then run all install steps |
 | **📊 Status Dashboard** | View of containers, disk, services, backup, install steps |
-| **🔄 Update** | Update homecloud itself, Nextcloud, bot deps, restic |
+| **🔄 Update** | Update homecloud itself, Immich, bot deps, restic |
 | **🔧 Repair** | Re-check and re-run any failed steps |
 | **🗑️ Uninstall** | Conservative removal — **keeps data on SSD** |
 | **🔐 Secrets: Export** | Save all secrets to a recovery JSON bundle |
@@ -133,12 +130,12 @@ homecloud --dry-run
 This prints every command without executing — review what will happen before
 running for real.
 
-### Step 4: Complete network & AIO setup
+### Step 4: Complete network setup + create admin account
 
-Once the installer finishes, Nextcloud isn't running yet — you need to set up
-external access and click through the AIO panel. See
-[🌐 Network & External Access](#-network--external-access) for the full guide
-(port forwarding, Tailscale, and the one-time AIO browser setup).
+Once the installer finishes, Immich is running but has no admin account yet.
+See [🌐 Network & External Access](#-network--external-access) for the full
+guide (Tailscale, creating your admin account, and generating an API key for
+the Telegram bot).
 
 ---
 
@@ -167,7 +164,7 @@ filesystem, the installer mounts it as-is.
 ### Tailscale auth key (`tailscale_auth_key`, optional)
 
 Tailscale provides the domain (`<pi>.<tailnet>.ts.net`) and TLS certificate
-for Nextcloud. It works on DS-Lite/CGNAT — no port forwarding or public IPv4
+for Immich. It works on DS-Lite/CGNAT — no port forwarding or public IPv4
 needed.
 
 1. Create a Tailscale account at <https://login.tailscale.com/start>.
@@ -175,7 +172,7 @@ needed.
    <https://login.tailscale.com/admin/settings/keys> for non-interactive
    setup. If you leave this blank, the installer will print a login URL.
 3. Install the Tailscale client on your phone/laptop from
-   <https://tailscale.com/download> to access Nextcloud from those devices.
+   <https://tailscale.com/download> to access Immich from those devices.
 
 > No port forwarding needed. Tailscale punches through NAT/DS-Lite via its
 > WireGuard mesh. The Pi gets a stable `100.x.y.z` IP and a MagicDNS name.
@@ -232,31 +229,29 @@ recovery** — lose it and your backups are gone.
    it starts with `-` (e.g. `-1001234567890`) — add the bot to the group and
    promote it to admin first.
 
-### Nextcloud admin password (`nextcloud_admin_password`)
+### Immich secrets (`immich_jwt_secret`, `immich_db_password`)
 
-The master password for the Nextcloud AIO admin panel (port 8080). Pick
-something strong — the installer can auto-generate one if left blank. Store it
-in a password manager; you'll need it to log in to the AIO management UI.
+These are auto-generated by the installer if left blank:
+- **`immich_jwt_secret`** — signs JWT auth tokens. 48 chars.
+- **`immich_db_password`** — postgres password. 32 chars.
 
-### Tailscale auth key (optional: `tailscale_auth_key`)
+You don't need to touch these unless you want to set your own.
 
-Used for non-interactive authentication of the Pi to your Tailscale tailnet.
-If set, the Tailscale step authenticates automatically. If left blank, the
-step prints a login URL you must open in your browser.
+### Immich API key (`immich_api_key`)
 
-1. Sign up at <https://tailscale.com> (free for personal use, up to 100 devices)
-2. Go to **Settings → Keys → Generate auth key**
-3. Copy the key (starts with `tskey-...`)
+> **Manual post-install step.** Unlike Nextcloud's `occ` CLI, Immich has no
+> CLI — admin actions go through the REST API with a key generated in the web
+> UI. The Telegram bot needs this key to query Immich stats.
 
-> **Without an auth key**, the Tailscale step still works — it just requires
-> you to open a URL in your browser to authorize the Pi. The auth key makes
-> it fully automated (useful for headless installs).
+1. After install, open Immich in your browser (see
+   [🌐 Network & External Access](#-network--external-access)).
+2. Create your admin account.
+3. Go to **Settings → API Keys → New API key**.
+4. Copy the key.
+5. Run `homecloud` → **Edit Config** → paste into `immich_api_key`.
 
-### Samba user + password (`samba_user`, `samba_password`)
-
-The username and password for the network file share. This is a local Linux
-account used only by Samba — pick any username (e.g. your first name) and a
-strong password. The installer can auto-generate the password if left blank.
+The bot won't be able to query Immich stats until this is done. System health
+and backup commands still work without it.
 
 ### WiFi (optional: `wifi_ssid`, `wifi_password`)
 
@@ -277,16 +272,14 @@ What gets installed, in order:
 
 | # | Step | Description |
 | :-: | :-- | :-- |
-| 1 | **SSD mount** | Format (if needed) + mount 5TB SSD at `/mnt/ncdata`, add to fstab |
+| 1 | **SSD mount** | Format (if needed) + mount 5TB SSD at `/mnt/data`, add to fstab |
 | 2 | **Docker** | Install Docker Engine, add user to docker group |
 | 3 | **Tailscale** | WireGuard mesh VPN for external access + TLS certs (bypasses DS-Lite/CGNAT) |
-| 4 | **Nextcloud AIO** | Launch master container behind Tailscale Serve (reverse-proxy mode) |
-| 5 | **Talk (Coturn)** | Guide enabling AIO's built-in TURN server for video calls |
-| 6 | **Samba** | Network share at `/mnt/ncdata/files` for non-Nextcloud files |
-| 7 | **WiFi** | (Optional) Connect via NetworkManager |
-| 8 | **restic + S3** | Init repo, deploy nightly backup script (3 AM cron) |
-| 9 | **Telegram bot** | Interactive bot as systemd service, daily 8 AM report |
-| 10 | **Hardening** | Docker→SSD dependency, fsck, verify all services auto-start |
+| 4 | **Immich** | Launch Immich stack (server + ML + redis + postgres) behind Tailscale Serve |
+| 5 | **WiFi** | (Optional) Connect via NetworkManager |
+| 6 | **restic + S3** | Init repo, deploy nightly backup script (3 AM cron) with pg_dump |
+| 7 | **Telegram bot** | Interactive bot as systemd service, daily 8 AM report |
+| 8 | **Hardening** | Docker→SSD dependency, fsck, verify all services auto-start |
 
 Each step is **idempotent** — running it twice is safe. Completed steps are
 tracked via marker files in `/etc/homecloud/state/`.
@@ -295,36 +288,14 @@ tracked via marker files in `/etc/homecloud/state/`.
 
 ## 🌐 Network & External Access
 
-After the installer finishes, you need to expose Nextcloud so you can reach it
-from outside your LAN, then complete the one-time AIO setup in your browser.
+After the installer finishes, Immich is running on port 2283 behind Tailscale
+Serve. You need to create your admin account and generate an API key for the bot.
 
-### Step 1: Port forwarding (on your router)
-
-> **⚠️ DS-Lite / CGNAT check first!** Many ISPs (Telekom, Vodafone, 1&1 in
-> Germany) assign a shared IPv4 via DS-Lite — you have **no real public IPv4**
-> and port forwarding **will not work**. Test from a phone on mobile data:
-> ```
-> curl -s https://api.ipify.org  # your public IPv4
-> nc -z -w5 <that-ip> 443 && echo OPEN || echo BLOCKED
-> ```
-> If blocked, skip port forwarding and use **Tailscale** (Step 2) instead.
-
-**If you have a real public IPv4**, forward these ports to your Pi's local IP
-(find it with `hostname -I` on the Pi):
-
-| Port | Protocol | Purpose |
-| :--: | :------: | :------ |
-| **80** | TCP | Let's Encrypt HTTP challenge (for TLS certs) |
-| **443** | TCP | Nextcloud HTTPS (daily use) |
-| **443** | UDP | HTTP/3 (optional, faster connections) |
-| **3478** | TCP + UDP | Talk TURN server (video calls) |
-| **5349** | TCP + UDP | Talk TURN over TLS (video calls) |
-
-### Step 2: Install Tailscale (external access, bypasses DS-Lite)
+### Step 1: Install Tailscale (external access, bypasses DS-Lite)
 
 Tailscale creates a WireGuard mesh VPN. Every device with the Tailscale client
 installed gets a stable `100.x.y.z` IP and can reach the Pi — **no port
-forwarding needed**. This is the recommended way to expose Nextcloud when your
+forwarding needed**. This is the recommended way to expose Immich when your
 ISP uses DS-Lite / CGNAT (no real public IPv4).
 
 **1. Get a Tailscale auth key (optional but recommended for non-interactive setup):**
@@ -335,7 +306,7 @@ ISP uses DS-Lite / CGNAT (no real public IPv4).
 
 **2. Run the Tailscale install step** (from the menu or CLI):
 ```bash
-homecloud install  # step 5: Tailscale
+homecloud install  # step 3: Tailscale
 ```
 
 If you set an auth key, the Pi authenticates automatically. If not, the step
@@ -346,10 +317,9 @@ prints a login URL — open it in your browser to authorize the Pi.
 - Available for iOS, Android, macOS, Windows, Linux
 - Log in with the same account you used for the Pi
 
-**4. Access Nextcloud over Tailscale:**
+**4. Access Immich over Tailscale:**
 ```
-https://<pi-tailscale-ip>       # Nextcloud
-https://<pi-tailscale-ip>:8080   # AIO admin panel
+https://<pi>.<tailnet>.ts.net
 ```
 Find the Pi's Tailscale IP with `tailscale ip -4` on the Pi, or in the
 [Tailscale admin console](https://login.tailscale.com/admin/machines).
@@ -357,128 +327,46 @@ Find the Pi's Tailscale IP with `tailscale ip -4` on the Pi, or in the
 > **Why Tailscale over port forwarding?**
 > - Works with DS-Lite / CGNAT (no real public IPv4)
 > - No upload bandwidth limits (unlike Cloudflare Tunnel's 100 MB cap)
-> - No request timeout (unlike Cloudflare Tunnel's 100s) — Talk video calls work
+> - No request timeout (unlike Cloudflare Tunnel's 100s)
 > - Encrypted end-to-end (WireGuard)
 > - Free for personal use (up to 100 devices)
 >
-> **Downside:** every device that accesses Nextcloud needs the Tailscale client
+> **Downside:** every device that accesses Immich needs the Tailscale client
 > installed. It's not a public URL you can share with anyone.
 
-### Step 3: Complete AIO setup (one-time, in your browser)
+### Step 2: Create your Immich admin account
 
-After the installer finishes, Nextcloud isn't running yet — you need to open
-the AIO panel and click through a few screens.
+Once the installer finishes, Immich is running but has no admin account yet.
 
-**1. Open the AIO panel:**
+**1. Open Immich in your browser:**
 ```
-https://<pi-tailscale-ip>:8080
+https://<pi>.<tailnet>.ts.net
 ```
-Or on your LAN: `https://<pi-ip>:8080`
+Or on your LAN: `http://<pi-ip>:2283`
 
-Accept the self-signed certificate warning in your browser.
+The cert is valid via Tailscale Serve — no browser warnings over Tailscale.
 
-**2. Enter your domain — validation is auto-skipped:**
+**2. Create your admin account** — the first user becomes the admin.
 
-AIO requires a domain to be entered, but it also tries to validate that your
-Pi is reachable from the internet on port 443. The installer launches AIO
-with `SKIP_DOMAIN_VALIDATION=true`, so **validation is skipped automatically**
-— no manual steps needed. This works even on DS-Lite/CGNAT (no real public IPv4).
+**3. (For the Telegram bot) Generate an API key:**
+- Go to **Settings → API Keys → New API key**
+- Copy the key
+- Run `homecloud` → **Edit Config** → paste into `immich_api_key`
 
-The domain is the Tailscale tailnet hostname (e.g.
-`homecloud.tail665a7d.ts.net`), which the installer enters automatically.
-Tailscale Serve terminates TLS with a valid cert and forwards to AIO's
-Apache on port 11000 — no Let's Encrypt or port forwarding needed.
+The bot can't query Immich stats until you've done this. System health and
+backup commands still work without it.
 
-**3. Pick optional containers:**
-| Container | Recommended? | Why |
-| :-- | :--: | :-- |
-| Nextcloud (core) | ✅ always | The actual cloud |
-| Nextcloud Talk | ✅ yes | Video/audio calls (works over Tailscale) |
-| Collabora | optional | Online document editing (LibreOffice) |
-| ClamAV | ❌ no | Antivirus — heavy, eats RAM on a Pi |
-| Fulltextsearch | ❌ no | Elasticsearch — heavy on Pi |
-| Imaginary | optional | Image processing/thumbnailing |
+### Step 3: Access Immich (daily use)
 
-**4. Set an admin password** — this is your Nextcloud `admin` login.
-Use something strong and store it in a password manager.
-
-**5. Click "Start containers"** — AIO pulls Docker images and boots everything.
-This takes 5–10 minutes on a Pi. You'll see progress in the panel.
-
-**6. When all containers show ✅**, your Nextcloud is live. Access it via:
-
-| Where you are | URL |
-| :-- | :-- |
-| Over Tailscale | `https://<pi>.<tailnet>.ts.net` (e.g. `https://homecloud.tail665a7d.ts.net`) |
-| Same LAN | `https://<pi-ip>` (self-signed cert, accept warning) |
-
-Log in with username `admin` and the password you set in step 4.
-
-> **⚠️ You must open the AIO panel and complete these steps before
-> Nextcloud is usable.** The installer only launches the master container —
-> the actual Nextcloud instance, database, Redis, etc. are started from
-> inside the AIO panel.
-
-### Step 4: Access Nextcloud (daily use)
-
-Once AIO containers are running, access Nextcloud at:
+Once your admin account is created, access Immich at:
 
 `https://<pi>.<tailnet>.ts.net` (e.g. `https://homecloud.tail665a7d.ts.net`)
 
 This works from any device on your tailnet (phone, laptop, etc. with
 Tailscale installed). The cert is valid — no browser warnings.
 
-Log in with the admin username (`admin`) and the Nextcloud admin password from
-your config.
-
----
-
-## 💾 Accessing Your Files
-
-Your SSD is mounted at `/mnt/ncdata` with this layout:
-
-| Path | Purpose | Owner |
-| :-- | :-- | :-- |
-| `/mnt/ncdata/nextcloud/` | Nextcloud's internal data (managed by NC — don't edit directly) | www-data (uid 33) |
-| `/mnt/ncdata/files/` | **Samba share** — your "drop any file here" folder | your user (uid 1000) |
-| `/mnt/ncdata/borg-backup/` | Local borg backup snapshots | root |
-
-### Samba (recommended)
-
-Already installed if you ran the Samba step. This gives you read/write access to `/mnt/ncdata/files/` from any device on your LAN.
-
-**macOS:** Finder → Go → Connect to Server (⌘K) → `smb://<pi-ip>/NAS Files`
-
-**Linux:** `smbclient //<pi-ip>/"NAS Files" -U <samba-user>`
-
-**Windows:** File Explorer → `\\<pi-ip>\NAS Files`
-
-### SSH / SCP
-
-```bash
-# Browse the SSD
-ssh pi@<pi-ip>
-ls -la /mnt/ncdata/files/
-
-# Copy a file off the SSD
-scp pi@<pi-ip>:/mnt/ncdata/files/somefile.pdf ./
-
-# Copy a file onto the SSD
-scp ./photo.jpg pi@<pi-ip>:/mnt/ncdata/files/
-```
-
-> You need `sudo` to access `/mnt/ncdata/nextcloud/` since it's owned by www-data.
-
-### SFTP (GUI clients)
-
-Use FileZilla, Cyberduck, WinSCP, etc. — connect to `<pi-ip>` with your SSH credentials, then navigate to `/mnt/ncdata/`.
-
-### ⚠️ Don't manually edit `/mnt/ncdata/nextcloud/`
-
-That folder is Nextcloud's internal database-tracked storage. Adding or removing files there directly will confuse Nextcloud. Instead:
-
-- **To make files visible in Nextcloud:** put them in `/mnt/ncdata/files/` (the Samba share), then in the Nextcloud web UI go to **Admin → External Storage → Add storage → Local** and set the path to `/mnt/ncdata/files`. That folder will then appear alongside your other Nextcloud folders.
-- **Or** upload via Nextcloud's web UI or desktop sync client as usual.
+Install the **Immich mobile app** on your phone (iOS/Android) and point it at
+`https://<pi>.<tailnet>.ts.net` for automatic photo backup.
 
 ---
 
@@ -486,9 +374,9 @@ That folder is Nextcloud's internal database-tracked storage. Adding or removing
 
 | Command | What you get |
 | :-- | :-- |
-| `/status` | CPU, RAM, temp, disk, NC container, last backup — instant |
-| `/report` | Full daily digest: system + Nextcloud aggregate stats |
-| `/users` | **Per-user** storage usage (quota, used space, last login) |
+| `/status` | CPU, RAM, temp, disk, Immich container, last backup — instant |
+| `/report` | Full daily digest: system + Immich stats (photos, videos, usage) |
+| `/jobs` | Immich job statuses (library scan, face detection, ML, etc.) |
 | `/backup` | Backup status + S3 snapshot list + log tail |
 | `/runbackup` | Trigger a backup immediately |
 | `/logs` | Last 30 lines of the backup log |
@@ -496,33 +384,32 @@ That folder is Nextcloud's internal database-tracked storage. Adding or removing
 
 A daily report is sent automatically at **08:00** (your timezone).
 
-> **Per-user reports:** `/report` shows *aggregate* Nextcloud stats (total files,
-> total users, free space). For a **per-user breakdown** (each user's storage
-> consumption, quota, and last login), use `/users`. This requires the
-> `usage_report` app to be enabled in Nextcloud (install it via
-> **Apps → Tools → User usage report**). If the app isn't installed, `/users`
-> falls back to listing usernames.
+> **Immich API key required:** `/report` and `/jobs` query the Immich REST API,
+> which requires an API key. Generate one in the Immich web UI
+> (Settings → API Keys) and paste it into `homecloud` config. Without it, those
+> commands return "API unavailable" — but `/status`, `/backup`, `/runbackup`,
+> and `/logs` still work.
 
 ### Sample bot output
 
 **`/status` — Quick health check**
 ```
 ⚡ Quick Status
-🕐 24 Jun 2026 14:32
+🕐 25 Jun 2026 14:32
 
 🖥 CPU: 3.2% load | 48.1°C temp
 🧠 RAM: 1.2G/8.0G
 💾 SSD: 214G/4.6T (5%)
-☁️ Nextcloud: running
+📸 Immich: running
 
-📦 Last backup: Tue Jun 24 03:00 2026
+📦 Last backup: Wed Jun 25 03:00 2026
    Status: ✅ Success | Uploaded: 312 MiB
 ```
 
 **`/report` — Full daily digest (sent automatically at 08:00)**
 ```
-📊 Nextcloud Daily Report
-📅 Tuesday, 24 Jun 2026 08:00
+📊 Immich Daily Report
+📅 Wednesday, 25 Jun 2026 08:00
 
 🏠 System
 • Uptime: up 12 days, 4 hours
@@ -531,58 +418,54 @@ A daily report is sent automatically at **08:00** (your timezone).
 • SSD: 214G/4.6T (5%)
 • SD: 7.2G/29G (26%)
 
-☁️ Nextcloud
-• Files: 48,392
-• Free: 4.3 TB
-• DB: 156 MB
+📸 Immich
+• Photos: 48,392
+• Videos: 1,204
+• Total usage: 187.4 GB
 
 📦 Backup
-• Last: Tue Jun 24 03:00 2026
+• Last: Wed Jun 25 03:00 2026
 • Status: ✅ Success
 • Uploaded: 312 MiB
 ```
 
-**`/users` — Per-user storage usage**
+**`/jobs` — Immich job statuses**
 ```
-👥 Per-User Usage
-📅 24 Jun 2026 14:35
+🔄 Immich Jobs
+📅 25 Jun 2026 14:35
 
-• omid: 187.4 GB / unlimited (last login: 2026-06-24)
-• sarah: 12.1 GB / 50.0 GB (last login: 2026-06-23)
-• guest: 4.2 GB / 10.0 GB (last login: 2026-06-15)
+• ✅ library: 0 active, 0 waiting
+• 🔄 faceDetection: 1 active, 42 waiting
+• ✅ smartSearch: 0 active, 0 waiting
+• ⏸ migration: 0 active, 0 waiting
 ```
 
 **`/backup` — Backup deep dive**
 ```
 📦 Backup Deep Dive
-📅 24 Jun 2026 14:40
+📅 25 Jun 2026 14:40
 
-• Last run: Tue Jun 24 03:00 2026
+• Last run: Wed Jun 25 03:00 2026
 • Status: ✅ Success
 • Uploaded: 312 MiB
 
 🗂 S3 Snapshots
 ```
 ID     Time                 Host        Tags
-abc12d 2026-06-24 03:14:22  homecloud   nextcloud
-def34e 2026-06-23 03:10:15  homecloud   nextcloud
-ghi56f 2026-06-22 03:12:01  homecloud   nextcloud
+abc12d 2026-06-25 03:14:22  homecloud   immich,immich-db
+def34e 2026-06-24 03:10:15  homecloud   immich,immich-db
+ghi56f 2026-06-23 03:12:01  homecloud   immich,immich-db
 ```
 
 📋 Log tail
 ```
-=== Backup started: Tue Jun 24 03:00:00 2026 ===
+=== Backup started: Wed Jun 25 03:00:00 2026 ===
+Dumping Immich postgres database...
 repository ... opened successfully
 [0:14] 100.00%  312 MiB/s  ...
 snapshot abc12def saved
-=== Backup finished: Tue Jun 24 03:14:22 2026 ===
+=== Backup finished: Wed Jun 25 03:14:22 2026 ===
 ```
-```
-
-**`/runbackup` — Trigger backup now**
-```
-🚀 Triggering backup now...
-✅ Backup started! Check /backup in ~5 min.
 ```
 
 ---
@@ -592,6 +475,15 @@ snapshot abc12def saved
 Nightly restic backups go to **S3 Glacier Deep Archive** (eu-central-1).
 Block-level deduplication means you only pay for ~your actual data size, not
 `200GB × N nights`.
+
+### What gets backed up
+
+1. **Immich postgres database** — dumped via `pg_dump` and sent to restic
+   with tag `immich-db`. This contains all metadata: faces, albums, EXIF,
+   user accounts, shared links. Without this, a restore would lose all
+   metadata even if the files survived.
+2. **Immich data directory** (`/mnt/data/immich/`) — uploads, library,
+   encoded-video, profile, thumbs. Sent to restic with tag `immich`.
 
 ### Cost estimate
 
@@ -644,8 +536,8 @@ All secrets live in `/etc/homecloud/.env` (permissions `0600`, root-owned):
 - S3 bucket name
 - restic repository password
 - Telegram bot token + chat ID
-- Nextcloud admin password
-- Samba password
+- Immich JWT secret + DB password
+- Immich API key (manual, post-install)
 
 ### Export a recovery bundle
 
@@ -677,18 +569,20 @@ Everything is wired to survive a reboot:
 
 | Component | Survives? | How |
 | :-- | :-- | :-- |
-| Nextcloud AIO | ✅ | `--restart always` |
-| Samba | ✅ | systemd service, enabled |
+| Immich stack | ✅ | `restart: always` in docker-compose |
 | SSD mount | ✅ | `/etc/fstab` with `nofail` |
 | Telegram bot | ✅ | systemd service, enabled |
 | Cron jobs | ✅ | persist across reboots |
 | WiFi | ✅ | NetworkManager persists |
 
 **Hardening applied:**
-- Docker waits for the SSD mount before starting (prevents Nextcloud silently
+- Docker waits for the SSD mount before starting (prevents Immich silently
   writing to the SD card if the SSD fails to mount)
 - `fsck` auto-repair on the SSD (fstab pass=2)
 - The backup script sends a Telegram alert if the Pi just rebooted
+- SSD hot-replug support: if you unplug and replug the SSD, a udev rule
+  triggers `data-replug.service` which fscks, mounts, restarts Docker, waits
+  for postgres, and restarts the Immich stack
 
 For full peace of mind, add a small UPS (~€60, e.g. APC Back-UPS 700) with
 `apcupsd` for graceful shutdown on power loss.
@@ -722,10 +616,9 @@ confirmation prompt:
 | Component | What it does |
 | :-- | :-- |
 | 📦 homecloud | `git pull` + `pip install` |
-| ☁️ Nextcloud | `occ update:check` → maintenance mode → `occ upgrade` → maintenance mode off |
+| 📸 Immich | `docker compose pull` + `docker compose up -d` |
 | 🤖 Bot deps | `pip install --upgrade` python-telegram-bot/APScheduler/requests + restart |
 | 🔐 restic | `apt-get install --only-upgrade restic` |
-| 📁 Samba | `apt-get install --only-upgrade samba` + restart smbd |
 
 **From the menu:** Main menu → 🔄 Update → "Update all"
 
@@ -745,12 +638,14 @@ homecloud update --all -y
 
 | Problem | Fix |
 | :-- | :-- |
-| AIO admin panel not reachable on :8080 | `docker logs nextcloud-aio-mastercontainer` |
-| Nextcloud Talk calls fail across networks | Verify port 3478 TCP+UDP is forwarded on your router |
+| Immich web not reachable on :2283 | `docker compose -f /opt/homecloud/immich/docker-compose.yml logs` |
+| Immich not reachable over Tailscale HTTPS | `tailscale serve status` — re-run the Immich step's repair |
 | Backup fails with S3 error | Check AWS credentials in `/etc/homecloud/.env` |
-| Bot not responding | `systemctl status ncbot` + `journalctl -u ncbot -f` |
-| SSD not mounted after reboot | Check `/etc/fstab` + `journalctl -b -u mnt-ncdata.mount` |
-| Docker started but Nextcloud on SD card | The hardening step prevents this; re-run Repair |
+| Bot not responding | `systemctl status homecloud-bot` + `journalctl -u homecloud-bot -f` |
+| Bot says "Immich API unavailable" | Generate an API key in Immich web UI → Settings → API Keys, paste into config |
+| SSD not mounted after reboot | Check `/etc/fstab` + `journalctl -b -u mnt-data.mount` |
+| Docker started but Immich on SD card | The hardening step prevents this; re-run Repair |
+| ML container too slow on Pi 5 | `docker compose stop immich-machine-learning` — Immich degrades gracefully (smart search won't work) |
 
 ---
 
@@ -791,9 +686,8 @@ home-cloud/
 │   │   ├── base.py                # Step ABC: run/status/repair/undo
 │   │   ├── ssd.py
 │   │   ├── docker.py
-│   │   ├── nextcloud_aio.py
-│   │   ├── coturn.py
-│   │   ├── samba.py
+│   │   ├── immich.py
+│   │   ├── tailscale.py
 │   │   ├── wifi.py
 │   │   ├── restic_s3.py
 │   │   ├── telegram_bot.py
@@ -801,6 +695,14 @@ home-cloud/
 │   ├── services/                  # systemd, docker, cron managers
 │   └── utils/                     # shell, logging, state, checks
 └── templates/                     # Reference config files
+    ├── immich/
+    │   ├── docker-compose.yml.j2
+    │   └── env.j2
+    ├── 99-data.rules              # udev rule for SSD hot-replug
+    ├── data-replug.service         # systemd oneshot for hot-replug
+    ├── homecloud-replug.sh        # hot-replug recovery script
+    ├── homecloud-bot.service      # Telegram bot systemd unit
+    └── docker-wait-for-ssd.conf    # Docker waits for SSD mount
 ```
 
 ---

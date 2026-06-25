@@ -2,7 +2,7 @@
 
 Tailscale creates a WireGuard mesh VPN. Every device that installs the
 Tailscale client gets a stable `100.x.y.z` IP and can reach the Pi without
-any port forwarding. This is the recommended way to expose Nextcloud when
+any port forwarding. This is the recommended way to expose Immich when
 the ISP assigns a DS-Lite / CGNAT IPv4 (no real public IPv4).
 
 The Pi runs `tailscaled` + authenticates with an auth key (pre-generated
@@ -125,8 +125,7 @@ class TailscaleStep(Step):
             (
                 "Tailscale is running. The Pi is now reachable from any device\n"
                 "on your tailnet (devices with Tailscale installed & logged in).\n\n"
-                f"  Nextcloud:  https://{ts_ip}\n"
-                f"  AIO panel:  https://{ts_ip}:8080\n\n"
+                f"  Immich:  https://{ts_ip}\n\n"
                 "Install the Tailscale client on your phone/laptop:\n"
                 "  https://tailscale.com/download\n"
                 "Log in with the same account you used for the Pi.\n\n"

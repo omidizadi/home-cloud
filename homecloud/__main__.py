@@ -43,7 +43,7 @@ def main() -> None:
     # update
     p_update = sub.add_parser("update", help="Update the homecloud app itself (git pull + pip install).")
     p_update.add_argument("--check", action="store_true", help="Only check for updates, don't apply them.")
-    p_update.add_argument("--all", action="store_true", help="Update all components (homecloud, Nextcloud, bot, restic, Samba).")
+    p_update.add_argument("--all", action="store_true", help="Update all components (homecloud, Immich, bot, restic).")
     p_update.add_argument("-y", "--yes", action="store_true", help="Skip confirmation prompts (use with --all).")
 
     args = parser.parse_args()
@@ -123,7 +123,7 @@ def _confirm(prompt: str, yes: bool = False) -> bool:
 
 
 def _run_update_all(yes: bool = False) -> None:
-    """Update all components from the CLI (homecloud, Nextcloud, bot, restic, Samba)."""
+    """Update all components from the CLI (homecloud, Immich, bot, restic)."""
     from .constants import BOT_VENV
     from .utils import which
 
@@ -136,44 +136,26 @@ def _run_update_all(yes: bool = False) -> None:
     else:
         print("⏭️  skipped")
 
-    # ── 2. Nextcloud ──
+    # ── 2. Immich ──
     print("\n" + "=" * 50)
-    print("☁️  Nextcloud")
+    print("📸 Immich")
     print("=" * 50)
-    nc_status = run(
-        "docker inspect --format='{{.State.Status}}' nextcloud-aio-nextcloud 2>/dev/null",
-        capture=True,
-    ).stdout.strip()
-    if nc_status != "running":
-        print("❌ Nextcloud container is not running. Start it via AIO panel first.")
-    elif _confirm("Update Nextcloud? (maintenance mode + occ upgrade)", yes):
-        print("Checking for updates...")
+    from .constants import IMMICH_COMPOSE_DIR
+    compose_file = IMMICH_COMPOSE_DIR / "docker-compose.yml"
+    if not _confirm("Update Immich? (docker compose pull + up -d)", yes):
+        print("⏭️  skipped")
+    else:
         r = run(
-            "docker exec --user www-data nextcloud-aio-nextcloud php occ update:check",
-            capture=True, sudo=True, timeout=60,
+            f"docker compose -f {compose_file} pull",
+            capture=True, sudo=True, timeout=300,
         )
         print(r.stdout.strip() or r.stderr.strip())
-        if "up to date" in r.stdout.lower():
-            print("✅ Nextcloud is up to date.")
-        elif _confirm("Updates available. Proceed with upgrade?", yes):
-            print("Enabling maintenance mode...")
-            run(
-                "docker exec --user www-data nextcloud-aio-nextcloud php occ maintenance:mode --on",
-                sudo=True, capture=True,
-            )
-            print("Running upgrade...")
-            r = run(
-                "docker exec --user www-data nextcloud-aio-nextcloud php occ upgrade",
-                capture=True, sudo=True, timeout=600,
-            )
-            print(r.stdout.strip() or r.stderr.strip())
-            run(
-                "docker exec --user www-data nextcloud-aio-nextcloud php occ maintenance:mode --off",
-                sudo=True, capture=True,
-            )
-            print("✅ Nextcloud upgraded." if r.ok else "❌ Upgrade may have failed.")
-    else:
-        print("⏭️  skipped")
+        r = run(
+            f"docker compose -f {compose_file} up -d",
+            capture=True, sudo=True, timeout=300,
+        )
+        print(r.stdout.strip() or r.stderr.strip())
+        print("✅ Immich updated." if r.ok else "❌ Update may have failed.")
 
     # ── 3. Bot deps ──
     print("\n" + "=" * 50)
@@ -186,7 +168,7 @@ def _run_update_all(yes: bool = False) -> None:
             capture=True, timeout=180,
         )
         if r.ok:
-            run("systemctl restart ncbot", sudo=True)
+            run("systemctl restart homecloud-bot", sudo=True)
             print("✅ Bot deps updated + restarted.")
         else:
             print(f"❌ {r.stderr}")
@@ -208,27 +190,6 @@ def _run_update_all(yes: bool = False) -> None:
         if r.ok:
             new = run("restic version", capture=True).stdout.strip()
             print(f"✅ restic updated: {new}")
-        else:
-            print(f"❌ {r.stderr}")
-    else:
-        print("⏭️  skipped")
-
-    # ── 5. Samba ──
-    print("\n" + "=" * 50)
-    print("📁 Samba")
-    print("=" * 50)
-    if not which("smbd"):
-        print("❌ smbd not installed")
-    elif _confirm("Update Samba via apt? (brief share interruption)", yes):
-        run("apt-get update -qq", sudo=True, timeout=120, capture=True)
-        r = run(
-            "apt-get install -y --only-upgrade samba samba-common-bin",
-            sudo=True, timeout=120, capture=True,
-        )
-        if r.ok:
-            run("systemctl restart smbd", sudo=True)
-            new = run("smbd --version", capture=True).stdout.strip()
-            print(f"✅ Samba updated: {new}")
         else:
             print(f"❌ {r.stderr}")
     else:

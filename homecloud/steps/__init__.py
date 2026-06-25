@@ -1,12 +1,10 @@
 """Steps package — one module per install phase."""
 
 from .base import Step, StepResult
-from .coturn import CoturnStep
 from .docker import DockerStep
 from .hardening import HardeningStep
-from .nextcloud_aio import NextcloudAioStep
+from .immich import ImmichStep
 from .restic_s3 import ResticS3Step
-from .samba import SambaStep
 from .ssd import SsdStep
 from .tailscale import TailscaleStep
 from .telegram_bot import TelegramBotStep
@@ -16,9 +14,7 @@ ALL_STEPS = [
     SsdStep,
     DockerStep,
     TailscaleStep,
-    NextcloudAioStep,
-    CoturnStep,
-    SambaStep,
+    ImmichStep,
     WifiStep,
     ResticS3Step,
     TelegramBotStep,
@@ -31,10 +27,8 @@ __all__ = [
     "ALL_STEPS",
     "SsdStep",
     "DockerStep",
-    "NextcloudAioStep",
+    "ImmichStep",
     "TailscaleStep",
-    "CoturnStep",
-    "SambaStep",
     "WifiStep",
     "ResticS3Step",
     "TelegramBotStep",
