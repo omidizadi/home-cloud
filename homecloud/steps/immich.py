@@ -69,7 +69,23 @@ class ImmichStep(Step):
             sudo=True, dry_run=self.dry_run, timeout=300,
         )
         if not r.ok and not self.dry_run:
-            return StepResult(self.name, False, f"docker compose up failed: {r.stderr}", r.stderr)
+            # If postgres is in a crash loop (stale/corrupt pgdata from a
+            # previous failed attempt), wipe pgdata and retry.  This is safe
+            # during initial install because there is no user data yet.
+            if self._pgdata_corrupt(r.stderr):
+                self.log("Postgres crashed — wiping stale pgdata and retrying...")
+                run(
+                    f"docker compose -f {IMMICH_COMPOSE_DIR / 'docker-compose.yml'} down -v",
+                    sudo=True, capture=True, timeout=60,
+                )
+                run(f"rm -rf {IMMICH_DATADIR / 'pgdata'}", sudo=True)
+                run(f"mkdir -p {IMMICH_DATADIR / 'pgdata'}", sudo=True)
+                r = run(
+                    f"docker compose -f {IMMICH_COMPOSE_DIR / 'docker-compose.yml'} up -d",
+                    sudo=True, dry_run=self.dry_run, timeout=300,
+                )
+            if not r.ok:
+                return StepResult(self.name, False, f"docker compose up failed: {r.stderr}", r.stderr)
 
         # Wait for Immich web to be reachable.
         if not self.dry_run:
@@ -170,7 +186,21 @@ class ImmichStep(Step):
                 sudo=True, capture=True, timeout=300,
             )
             if not r.ok:
-                return StepResult(self.name, False, f"docker compose up failed: {r.stderr}", r.stderr)
+                # Attempt pgdata recovery if postgres is in a crash loop.
+                if self._pgdata_corrupt(r.stderr):
+                    self.log("Postgres crashed — wiping stale pgdata and retrying...")
+                    run(
+                        f"docker compose -f {IMMICH_COMPOSE_DIR / 'docker-compose.yml'} down -v",
+                        sudo=True, capture=True, timeout=60,
+                    )
+                    run(f"rm -rf {IMMICH_DATADIR / 'pgdata'}", sudo=True)
+                    run(f"mkdir -p {IMMICH_DATADIR / 'pgdata'}", sudo=True)
+                    r = run(
+                        f"docker compose -f {IMMICH_COMPOSE_DIR / 'docker-compose.yml'} up -d",
+                        sudo=True, capture=True, timeout=300,
+                    )
+                if not r.ok:
+                    return StepResult(self.name, False, f"docker compose up failed: {r.stderr}", r.stderr)
             if not self._wait_for_port(IMMICH_WEB_PORT, timeout=120):
                 return StepResult(self.name, False, f"Immich web did not come up on :{IMMICH_WEB_PORT}")
 
@@ -276,6 +306,10 @@ class ImmichStep(Step):
             return dns.rstrip(".")
         except (json.JSONDecodeError, KeyError):
             return ""
+
+    def _pgdata_corrupt(self, stderr: str) -> bool:
+        """True if docker compose failed because postgres is in a crash loop."""
+        return "is unhealthy" in stderr and "immich-postgres" in stderr
 
     def _serve_configured(self) -> bool:
         """True if `tailscale serve` is forwarding :443 to Immich's web port."""
