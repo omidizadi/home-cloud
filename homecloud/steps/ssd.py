@@ -43,16 +43,23 @@ class SsdStep(Step):
         # Add to fstab (idempotent)
         self._ensure_fstab_entry(part)
 
-        # Mount
+        # Mount via fstab
         r = run("mount -a", sudo=True, dry_run=self.dry_run)
         if not r.ok and not self.dry_run:
             return StepResult(self.name, False, f"mount -a failed: {r.stderr}", r.stderr)
 
-        # Verify mounted
+        # Verify mounted; if mount -a missed us, try direct mount
         if not self.dry_run:
             r = run(f"findmnt --source {part} --target {DATA_MOUNT}", capture=True)
             if not r.ok:
-                return StepResult(self.name, False, f"{DATA_MOUNT} not mounted")
+                self.log(f"mount -a didn't mount {part}, trying direct mount...")
+                r2 = run(f"mount {part} {DATA_MOUNT}", sudo=True)
+                if not r2.ok:
+                    return StepResult(self.name, False,
+                                      f"Mount failed ({part} → {DATA_MOUNT}): {r2.stderr}", r2.stderr)
+                r = run(f"findmnt --source {part} --target {DATA_MOUNT}", capture=True)
+                if not r.ok:
+                    return StepResult(self.name, False, f"{DATA_MOUNT} not mounted after direct mount")
 
         # Create Immich data directory (containers manage their own perms)
         run(f"mkdir -p {IMMICH_DATADIR}", sudo=True, dry_run=self.dry_run)
@@ -79,9 +86,23 @@ class SsdStep(Step):
         r = run(f"blkid -o value -s TYPE {part}", capture=True)
         return r.ok and r.stdout.strip() == "ext4"
 
+    def _get_uuid(self, part: str) -> str:
+        """Get the UUID of a partition."""
+        r = run(f"blkid -o value -s UUID {part}", capture=True)
+        if r.ok and r.stdout.strip():
+            return r.stdout.strip()
+        return ""
+
     def _ensure_fstab_entry(self, part: str) -> None:
-        """Idempotently add the SSD to /etc/fstab."""
-        entry = f"LABEL={self.cfg.ssd_label}  {DATA_MOUNT}  ext4  defaults,nofail  0  2"
+        """Idempotently add the SSD to /etc/fstab using UUID."""
+        # Prefer UUID over LABEL — works even if the existing partition
+        # has a different label than our default "data".
+        uid = self._get_uuid(part)
+        if uid:
+            identifier = f"UUID={uid}"
+        else:
+            identifier = f"LABEL={self.cfg.ssd_label}"
+        entry = f"{identifier}  {DATA_MOUNT}  ext4  defaults,nofail  0  2"
         if self.dry_run:
             self.log(f"[dry-run] would add fstab entry: {entry}")
             return
@@ -92,7 +113,7 @@ class SsdStep(Step):
             return
         r = run(f"bash -c 'echo \"{entry}\" >> {fstab}'", sudo=True)
         if r.ok:
-            self.log("fstab entry added")
+            self.log(f"fstab entry added ({identifier})")
 
     def status(self) -> StepResult:
         if self.dry_run:
