@@ -11,6 +11,18 @@ from ..utils import file_exists_sudo, read_file_sudo, run, which, write_file_sud
 from .base import Step, StepResult
 
 
+def _repo_already_initialized(stderr: str) -> bool:
+    """True if restic init failed because the repo already exists.
+
+    restic's wording varies across versions:
+      - "config file already exists"
+      - "repository master key and config already initialized"
+    Both mean the repo is usable — treat as success.
+    """
+    s = stderr.lower()
+    return "config file already exists" in s or "already initialized" in s
+
+
 class ResticS3Step(Step):
     name = "restic_s3"
     label = "Configure restic + S3 Backup"
@@ -33,7 +45,7 @@ class ResticS3Step(Step):
         if not self.dry_run:
             self.log("Initializing restic repository on S3...")
             r = run("restic init", env=env, capture=True, timeout=60)
-            if not r.ok and "config file already exists" not in r.stderr:
+            if not r.ok and not _repo_already_initialized(r.stderr):
                 return StepResult(self.name, False, f"restic init failed: {r.stderr}", r.stderr)
             self.log("restic repo ready")
 

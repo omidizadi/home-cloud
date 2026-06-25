@@ -68,27 +68,54 @@ class SsdStep(Step):
         return StepResult(self.name, True, f"SSD mounted at {DATA_MOUNT}")
 
     def _detect_partition(self, dev: str) -> str:
-        """Find the first partition of the device."""
+        """Find the best partition of the device.
+
+        Picks the **largest** partition by size. A device may carry small
+        leftover partitions from a previous install (e.g. a 182MB ``ncdata``
+        partition from an old Nextcloud setup) alongside the real multi-TB
+        data partition. Naively taking the first partition mounts the tiny
+        one and Postgres runs out of space during ``initdb``.
+        """
         if self.dry_run:
             return f"{dev}1"
-        r = run(f"lsblk -ln -o NAME {dev}", capture=True)
+        # Ask lsblk for partition name + size in bytes, parse, and pick max.
+        r = run(
+            f"lsblk -ln -b -o NAME,SIZE {dev}",
+            capture=True,
+        )
         if r.ok:
-            lines = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
-            # First line is the device itself, subsequent are partitions
-            for line in lines[1:]:
-                name = line.split()[0]
-                return f"/dev/{name}"
+            best_name: str | None = None
+            best_size: int = -1
+            for line in r.stdout.splitlines():
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                name = parts[0]
+                try:
+                    size = int(parts[1])
+                except ValueError:
+                    continue
+                # First line is the parent device itself; skip it by name.
+                if name == dev.replace("/dev/", ""):
+                    continue
+                if size > best_size:
+                    best_size = size
+                    best_name = name
+            if best_name:
+                return f"/dev/{best_name}"
         return f"{dev}1"
 
     def _is_ext4(self, part: str) -> bool:
         if self.dry_run:
             return True
-        r = run(f"blkid -o value -s TYPE {part}", capture=True)
+        # Use sudo: blkid lives in /usr/sbin which is on root's secure_path
+        # but often missing from a non-interactive user shell's PATH.
+        r = run(f"blkid -o value -s TYPE {part}", sudo=True, capture=True)
         return r.ok and r.stdout.strip() == "ext4"
 
     def _get_uuid(self, part: str) -> str:
         """Get the UUID of a partition."""
-        r = run(f"blkid -o value -s UUID {part}", capture=True)
+        r = run(f"blkid -o value -s UUID {part}", sudo=True, capture=True)
         if r.ok and r.stdout.strip():
             return r.stdout.strip()
         return ""
