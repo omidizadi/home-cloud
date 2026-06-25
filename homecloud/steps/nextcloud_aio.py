@@ -456,7 +456,13 @@ class NextcloudAioStep(Step):
         restarting the mastercontainer alone does NOT respawn Apache. The flow:
           1. GET /api/auth/getlogin?token=<AIO_TOKEN>  (authenticates session)
           2. GET /containers                           (fetch CSRF token)
-          3. POST /api/docker/start                     (start containers)
+          3. POST /api/docker/stop                      (stop all containers)
+          4. GET /containers + POST /api/docker/start   (recreate with new config)
+
+        The stop+start is necessary because AIO sets OVERWRITEHOST and other
+        env vars from configuration.json when it *creates* the Nextcloud
+        container — simply starting an existing container won't pick up the
+        new domain.
         """
         import re as _re
         import tempfile as _tempfile
@@ -482,42 +488,57 @@ class NextcloudAioStep(Step):
 
         cookie_file = _tempfile.mkstemp(prefix="aio-cookies-")[1]
 
-        # 1. Login with token.
-        r = run(
-            f"curl -sk -c {cookie_file} -o /dev/null "
-            f"https://localhost:{AIO_ADMIN_PORT}/api/auth/getlogin?token={aio_token}",
-            sudo=True, capture=True, timeout=30,
-        )
-        if not r.ok:
-            return False
+        def _get_csrf() -> tuple[str, str] | tuple[None, None]:
+            r = run(
+                f"curl -sk -b {cookie_file} "
+                f"https://localhost:{AIO_ADMIN_PORT}/containers",
+                sudo=True, capture=True,
+            )
+            if not r.ok:
+                return None, None
+            m_name = _re.search(r'name="csrf_name"\s+value="([^"]+)"', r.stdout)
+            m_value = _re.search(r'name="csrf_value"\s+value="([^"]+)"', r.stdout)
+            if not m_name or not m_value:
+                return None, None
+            return m_name.group(1), m_value.group(1)
 
-        # 2. Fetch CSRF token from the containers page.
-        r = run(
-            f"curl -sk -b {cookie_file} "
-            f"https://localhost:{AIO_ADMIN_PORT}/containers",
-            sudo=True, capture=True,
-        )
-        if not r.ok:
-            return False
-        html = r.stdout
-        m_name = _re.search(r'''csrf_name"\s+value="([^"]+)"''', html)
-        m_value = _re.search(r'''csrf_value"\s+value="([^"]+)"''', html)
-        if not m_name or not m_value:
-            self.log("Could not extract CSRF token from AIO containers page")
-            return False
-        csrf_name = m_name.group(1)
-        csrf_value = m_value.group(1)
+        def _api_post(endpoint: str) -> str:
+            csrf_name, csrf_value = _get_csrf()
+            if not csrf_name:
+                self.log(f"Could not get CSRF for {endpoint}")
+                return ""
+            r = run(
+                f"curl -sk -b {cookie_file} -X POST "
+                f"https://localhost:{AIO_ADMIN_PORT}{endpoint} "
+                f"--data-urlencode csrf_name={csrf_name} "
+                f"--data-urlencode csrf_value={csrf_value} "
+                f"-o /dev/null -w %{{http_code}}",
+                sudo=True, capture=True, timeout=180,
+            )
+            return r.stdout.strip()
 
-        # 3. Start containers.
-        r = run(
-            f"curl -sk -b {cookie_file} -X POST "
-            f"https://localhost:{AIO_ADMIN_PORT}/api/docker/start "
-            f"--data-urlencode csrf_name={csrf_name} "
-            f"--data-urlencode csrf_value={csrf_value} "
-            f"-o /dev/null -w %{{http_code}}",
-            sudo=True, capture=True, timeout=120,
-        )
-        run(f"rm -f {cookie_file}", sudo=True, capture=True)
-        code = r.stdout.strip()
-        self.log(f"AIO /api/docker/start → HTTP {code}")
-        return r.ok and code in ("200", "302")
+        try:
+            # 1. Login (don't follow redirect — just save the cookie from 302).
+            r = run(
+                f"curl -sk -c {cookie_file} -o /dev/null "
+                f"https://localhost:{AIO_ADMIN_PORT}/api/auth/getlogin?token={aio_token}",
+                sudo=True, capture=True, timeout=30,
+            )
+            if not r.ok:
+                self.log("AIO API login failed")
+                return False
+
+            # 2. Stop containers (so they get recreated with new env on start).
+            code = _api_post("/api/docker/stop")
+            self.log(f"AIO /api/docker/stop → HTTP {code}")
+            if code not in ("200", "302"):
+                self.log("Stop failed — trying start anyway")
+
+            time.sleep(10)  # let containers fully stop
+
+            # 3. Start containers (recreates them with updated configuration.json).
+            code = _api_post("/api/docker/start")
+            self.log(f"AIO /api/docker/start → HTTP {code}")
+            return code in ("200", "302")
+        finally:
+            run(f"rm -f {cookie_file}", sudo=True, capture=True)
