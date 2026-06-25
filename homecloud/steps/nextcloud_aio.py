@@ -199,19 +199,27 @@ class NextcloudAioStep(Step):
             if not res.success:
                 return res
 
-        # 2. Force-recreate the Apache container so the mastercontainer respawns
-        #    it with APACHE_PORT=11000 and the new domain. The mastercontainer
-        #    only re-reads its env/domain when Apache is absent, so we must remove
-        #    the old one (still on :443 with the DuckDNS domain) and restart the
-        #    mastercontainer to trigger recreation.
-        self.log("Force-recreating Apache container on :11000...")
+        # 2. Force-recreate the Apache container via the AIO API. Simply
+        #    restarting the mastercontainer does NOT respawn Apache — AIO only
+        #    creates containers when triggered via its web API. We:
+        #      a. Remove the old Apache (still on :443 with DuckDNS domain).
+        #      b. Call POST /api/docker/start (auth via AIO_TOKEN + CSRF).
+        #    The mastercontainer then recreates Apache on :11000 with the new
+        #    domain from configuration.json.
+        self.log("Force-recreating Apache container via AIO API...")
         if not self.dry_run:
             run("tailscale serve reset", sudo=True, capture=True)  # free :443
             run("docker stop nextcloud-aio-apache", sudo=True, capture=True)
             run("docker rm -f nextcloud-aio-apache", sudo=True, capture=True)
-            run(f"docker restart {AIO_MASTER_CONTAINER}", sudo=True, capture=True)
-            # Wait for the mastercontainer to respawn Apache on :11000.
-            if not self._wait_for_port(AIO_APACHE_PORT, timeout=90):
+            if not self._aio_start_containers():
+                return StepResult(
+                    self.name, False,
+                    "AIO API failed to start containers",
+                    "Could not trigger container start via the AIO API.\n"
+                    f"Check: sudo docker logs --tail 30 {AIO_MASTER_CONTAINER}",
+                )
+            # Wait for Apache to come up on :11000.
+            if not self._wait_for_port(AIO_APACHE_PORT, timeout=120):
                 return StepResult(
                     self.name, False,
                     f"Apache did not come up on :{AIO_APACHE_PORT}",
@@ -255,7 +263,7 @@ class NextcloudAioStep(Step):
             resolve_opt = f"--resolve {ts_fqdn}:443:{ts_ip}" if ts_ip else ""
             r = run(
                 f"curl -sk --max-time 10 {resolve_opt} "
-                f"-o /dev/null -w '%{{http_code}}' https://{ts_fqdn}",
+                f"-o /dev/null -w %{{http_code}} https://{ts_fqdn}",
                 capture=True,
             )
             code = r.stdout.strip()
@@ -440,3 +448,76 @@ class NextcloudAioStep(Step):
             capture=True,
         )
         return r.ok or r.returncode == 52
+
+    def _aio_start_containers(self) -> bool:
+        """Trigger AIO's container-start via its web API.
+
+        AIO only creates/recreates containers when triggered via the API —
+        restarting the mastercontainer alone does NOT respawn Apache. The flow:
+          1. GET /api/auth/getlogin?token=<AIO_TOKEN>  (authenticates session)
+          2. GET /containers                           (fetch CSRF token)
+          3. POST /api/docker/start                     (start containers)
+        """
+        import re as _re
+        import tempfile as _tempfile
+
+        # Read AIO_TOKEN from configuration.json on the host.
+        r = run(
+            "docker volume inspect nextcloud_aio_mastercontainer "
+            "--format='{{.Mountpoint}}'",
+            sudo=True, capture=True,
+        )
+        if not r.ok:
+            return False
+        cfg_path = f"{r.stdout.strip()}/data/configuration.json"
+        r = run(f"cat {cfg_path}", sudo=True, capture=True)
+        if not r.ok:
+            return False
+        try:
+            aio_token = json.loads(r.stdout).get("AIO_TOKEN", "")
+        except json.JSONDecodeError:
+            return False
+        if not aio_token:
+            return False
+
+        cookie_file = _tempfile.mkstemp(prefix="aio-cookies-")[1]
+
+        # 1. Login with token.
+        r = run(
+            f"curl -sk -c {cookie_file} -o /dev/null "
+            f"https://localhost:{AIO_ADMIN_PORT}/api/auth/getlogin?token={aio_token}",
+            sudo=True, capture=True, timeout=30,
+        )
+        if not r.ok:
+            return False
+
+        # 2. Fetch CSRF token from the containers page.
+        r = run(
+            f"curl -sk -b {cookie_file} "
+            f"https://localhost:{AIO_ADMIN_PORT}/containers",
+            sudo=True, capture=True,
+        )
+        if not r.ok:
+            return False
+        html = r.stdout
+        m_name = _re.search(r'''csrf_name"\s+value="([^"]+)"''', html)
+        m_value = _re.search(r'''csrf_value"\s+value="([^"]+)"''', html)
+        if not m_name or not m_value:
+            self.log("Could not extract CSRF token from AIO containers page")
+            return False
+        csrf_name = m_name.group(1)
+        csrf_value = m_value.group(1)
+
+        # 3. Start containers.
+        r = run(
+            f"curl -sk -b {cookie_file} -X POST "
+            f"https://localhost:{AIO_ADMIN_PORT}/api/docker/start "
+            f"--data-urlencode csrf_name={csrf_name} "
+            f"--data-urlencode csrf_value={csrf_value} "
+            f"-o /dev/null -w %{{http_code}}",
+            sudo=True, capture=True, timeout=120,
+        )
+        run(f"rm -f {cookie_file}", sudo=True, capture=True)
+        code = r.stdout.strip()
+        self.log(f"AIO /api/docker/start → HTTP {code}")
+        return r.ok and code in ("200", "302")
