@@ -196,8 +196,16 @@ def validate(cfg: Config) -> list[str]:
 
 
 def generate_password(length: int = 32) -> str:
-    """Generate a strong random password."""
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+    """Generate a strong random password.
+
+    The alphabet deliberately excludes ``$`` and backtick: these secrets end
+    up in docker-compose YAML, ``.env`` files, and shell commands, where
+    ``$`` triggers variable interpolation (e.g. ``POSTGRES_PASSWORD: p$K``
+    makes Compose look up an unset ``$K`` variable, silently corrupting the
+    password and crashing postgres). Alphanumeric + a safe punctuation set
+    is more than strong enough and avoids the whole class of bugs.
+    """
+    alphabet = string.ascii_letters + string.digits + "!@#%^&*-_=+"
     return "".join(pysecrets.choice(alphabet) for _ in range(length))
 
 

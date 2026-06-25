@@ -44,7 +44,9 @@ services:
     container_name: immich-postgres
     image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0
     environment:
-      POSTGRES_PASSWORD: {{ db_password }}
+      # Escape `$` as `$$` so Compose doesn't interpolate fragments of the
+      # password as unset variables (e.g. `p$K` → looks up `$K`).
+      POSTGRES_PASSWORD: {{ db_password | replace("$", "$$") }}
       POSTGRES_USER: postgres
       POSTGRES_DB: immich
       POSTGRES_INITDB_ARGS: '--data-checksums'
