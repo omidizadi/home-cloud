@@ -88,11 +88,13 @@ export AWS_ACCESS_KEY_ID="{env['AWS_ACCESS_KEY_ID']}"
 export AWS_SECRET_ACCESS_KEY="{env['AWS_SECRET_ACCESS_KEY']}"
 export RESTIC_PASSWORD="{env['RESTIC_PASSWORD']}"
 export RESTIC_REPOSITORY="{env['RESTIC_REPOSITORY']}"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH"
 
 TELEGRAM_TOKEN="{self.cfg.telegram_bot_token}"
 CHAT_ID="{self.cfg.telegram_chat_id}"
 
 LOG="{BACKUP_LOG}"
+touch "$LOG" 2>/dev/null || true
 exec >> "$LOG" 2>&1
 echo "=== Backup started: $(date) ==="
 

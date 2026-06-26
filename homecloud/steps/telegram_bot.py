@@ -264,8 +264,8 @@ class TelegramBotStep(Step):
                     f"📦 *Backup Deep Dive*\\n📅 {{datetime.now().strftime('%d %b %Y %H:%M')}}\\n\\n"
                     f"• Last run: `{{bk['last_run']}}`\\n• Status: {{bk['status']}}\\n"
                     f"• Uploaded: `{{bk['uploaded']}}`\\n\\n"
-                    f"🗂 *S3 Snapshots*\\n````{{snaps}}````\\n\\n"
-                    f"📋 *Log tail*\\n````{{tail[-600:]}}````"
+                    f"🗂 *S3 Snapshots*\\n```{{snaps}}```\\n\\n"
+                    f"📋 *Log tail*\\n```{{tail[-600:]}}```"
                 )
 
             def build_jobs_report():
@@ -308,29 +308,54 @@ class TelegramBotStep(Step):
 
             async def cmd_status(update, ctx):
                 await update.message.reply_text("⏳ Fetching...")
-                await update.message.reply_text(build_quick_status(), parse_mode="Markdown")
+                try:
+                    await update.message.reply_text(build_quick_status(), parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"cmd_status error: {{e}}")
+                    await update.message.reply_text(build_quick_status(), parse_mode=None)
 
             async def cmd_report(update, ctx):
                 await update.message.reply_text("⏳ Building report...")
-                await update.message.reply_text(build_daily_report(), parse_mode="Markdown")
+                try:
+                    await update.message.reply_text(build_daily_report(), parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"cmd_report error: {{e}}")
+                    await update.message.reply_text(build_daily_report(), parse_mode=None)
 
             async def cmd_backup(update, ctx):
                 await update.message.reply_text("⏳ Fetching backup details...")
-                await update.message.reply_text(build_backup_report(), parse_mode="Markdown")
+                try:
+                    await update.message.reply_text(build_backup_report(), parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"cmd_backup error: {{e}}")
+                    await update.message.reply_text(build_backup_report(), parse_mode=None)
 
             async def cmd_jobs(update, ctx):
                 await update.message.reply_text("⏳ Fetching Immich jobs...")
-                await update.message.reply_text(build_jobs_report(), parse_mode="Markdown")
+                try:
+                    await update.message.reply_text(build_jobs_report(), parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"cmd_jobs error: {{e}}")
+                    await update.message.reply_text(build_jobs_report(), parse_mode=None)
 
             async def cmd_runbackup(update, ctx):
                 await update.message.reply_text("🚀 Triggering backup now...")
-                subprocess.Popen(["/opt/homecloud-backup.sh"],
-                    stdout=open(BACKUP_LOG, "a"), stderr=subprocess.STDOUT)
-                await update.message.reply_text("✅ Backup started! Check /backup in ~5 min.")
+                try:
+                    subprocess.Popen(
+                        ["sudo", "/opt/homecloud-backup.sh"],
+                        stdout=open(BACKUP_LOG, "a"), stderr=subprocess.STDOUT)
+                    await update.message.reply_text("✅ Backup started! Check /backup in ~5 min.")
+                except Exception as e:
+                    logger.error(f"cmd_runbackup error: {{e}}")
+                    await update.message.reply_text(f"❌ Failed to start backup: {{e}}")
 
             async def cmd_logs(update, ctx):
-                log = run(f"tail -30 {{BACKUP_LOG}} 2>/dev/null") or "No log file yet"
-                await update.message.reply_text(f"📋 *Log*\\n````{{log[-2000:]}}````", parse_mode="Markdown")
+                log_content = run(f"tail -30 {{BACKUP_LOG}} 2>/dev/null") or "No log file yet"
+                try:
+                    await update.message.reply_text(f"📋 *Log*\\n```{{log_content[-2000:]}}```", parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"cmd_logs error: {{e}}")
+                    await update.message.reply_text(f"📋 Log:\\n{{log_content[-2000:]}}", parse_mode=None)
 
             async def cmd_help(update, ctx):
                 await cmd_start(update, ctx)

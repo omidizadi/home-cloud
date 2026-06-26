@@ -169,22 +169,39 @@ CRON_MARKER_END = "# <<< homecloud end <<<"
 
 
 def _current_crontab() -> str:
-    r = run("crontab -l", capture=True, sudo=False)
+    r = run("sudo crontab -l", capture=True)
     return r.stdout if r.ok else ""
 
 
 def _write_crontab(content: str) -> Result:
-    return run(f"cat <<'HOMECLOUD_CRON' | crontab -\n{content}\nHOMECLOUD_CRON", capture=True)
+    return run(f"cat <<'HOMECLOUD_CRON' | sudo crontab -\n{content}\nHOMECLOUD_CRON", capture=True)
 
 
 def add_cron_block(block: str, *, dry_run: bool = False) -> None:
     """Add (or replace) a managed cron block identified by markers.
 
     Idempotent: if the block already exists, it's replaced.
+    Writes to root's crontab so scripts run with root privileges.
+    Also removes any stale block from the user's own crontab (migration).
     """
     if dry_run:
         log.info("[dry-run] would add cron block:\n%s", block)
         return
+
+    # Migration: remove stale block from the user's (non-root) crontab
+    try:
+        user_cron = run("crontab -l", capture=True)
+        if user_cron.ok and CRON_MARKER_BEGIN in user_cron.stdout:
+            pattern = re.compile(
+                rf"{re.escape(CRON_MARKER_BEGIN)}.*?{re.escape(CRON_MARKER_END)}",
+                re.DOTALL,
+            )
+            cleaned_user = pattern.sub("", user_cron.stdout).strip()
+            run(f"cat <<'HOMECLOUD_CRON' | crontab -\n{cleaned_user}\nHOMECLOUD_CRON", capture=True)
+            log.info("removed stale cron block from user crontab")
+    except Exception:
+        pass
+
     current = _current_crontab()
     # Remove existing managed block
     pattern = re.compile(
@@ -194,7 +211,7 @@ def add_cron_block(block: str, *, dry_run: bool = False) -> None:
     cleaned = pattern.sub("", current).strip()
     new = f"{cleaned}\n\n{CRON_MARKER_BEGIN}\n{block}\n{CRON_MARKER_END}\n"
     _write_crontab(new)
-    log.info("cron block added")
+    log.info("cron block added to root crontab")
 
 
 def remove_cron_block(*, dry_run: bool = False) -> None:
