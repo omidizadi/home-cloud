@@ -121,6 +121,9 @@ class TelegramBotStep(Step):
             AWS_KEY = "{self.cfg.aws_access_key_id}"
             AWS_SECRET = "{self.cfg.aws_secret_access_key}"
             RESTIC_PASSWORD = "{self.cfg.restic_password}"
+            # Paths used by /update (mirror homecloud.constants)
+            INSTALL_DIR = "/opt/homecloud"
+            VENV_DIR = "/opt/homecloud-venv"
 
             logging.basicConfig(level=logging.INFO)
             logger = logging.getLogger(__name__)
@@ -301,8 +304,7 @@ class TelegramBotStep(Step):
                     "/report — full daily report\\n"
                     "/jobs — Immich job statuses\\n"
                     "/backup — backup status + S3 snapshots\\n"
-                    "/runbackup — trigger a backup NOW\\n"
-                    "/logs — last 30 lines of backup log\\n"
+                    "/runbackup — trigger a backup NOW\\n"                    "/update — update homecloud (git pull + pip install)\n"                    "/logs — last 30 lines of backup log\\n"
                     "/help — show this menu",
                     parse_mode="Markdown")
 
@@ -349,6 +351,34 @@ class TelegramBotStep(Step):
                     logger.error(f"cmd_runbackup error: {{e}}")
                     await update.message.reply_text(f"❌ Failed to start backup: {{e}}")
 
+            async def cmd_update(update, ctx):
+                """Update homecloud itself: git pull + pip install -e (like the CLI Update menu)."""
+                await update.message.reply_text("🔄 Updating homecloud (git pull + pip install)...")
+                try:
+                    git_pull = subprocess.run(
+                        ["git", "-C", INSTALL_DIR, "pull", "--ff-only"],
+                        capture_output=True, text=True, timeout=120)
+                    git_out = (git_pull.stdout + git_pull.stderr).strip() or "(no output)"
+                    if git_pull.returncode != 0:
+                        await update.message.reply_text(f"❌ git pull failed:\n```
+{git_out[-1500:]}```", parse_mode="Markdown")
+                        return
+                    pip = subprocess.run(
+                        [f"{VENV_DIR}/bin/pip", "install", "--quiet", "-e", INSTALL_DIR],
+                        capture_output=True, text=True, timeout=300)
+                    pip_out = (pip.stdout + pip.stderr).strip() or "(no output)"
+                    if pip.returncode != 0:
+                        await update.message.reply_text(f"❌ pip install failed:\n```
+{pip_out[-1500:]}```", parse_mode="Markdown")
+                        return
+                    await update.message.reply_text(
+                        f"✅ homecloud updated.\n\n*git pull:*\n```
+{git_out[-800:]}```\n\n*pip install:* OK\n\nRe-run `homecloud` to apply.",
+                        parse_mode="Markdown")
+                except Exception as e:
+                    logger.error(f"cmd_update error: {e}")
+                    await update.message.reply_text(f"❌ Update failed: {e}")
+
             async def cmd_logs(update, ctx):
                 log_content = run(f"tail -30 {{BACKUP_LOG}} 2>/dev/null") or "No log file yet"
                 try:
@@ -374,6 +404,7 @@ class TelegramBotStep(Step):
                 app.add_handler(CommandHandler("jobs", cmd_jobs))
                 app.add_handler(CommandHandler("backup", cmd_backup))
                 app.add_handler(CommandHandler("runbackup", cmd_runbackup))
+                app.add_handler(CommandHandler("update", cmd_update))
                 app.add_handler(CommandHandler("logs", cmd_logs))
                 app.add_handler(CommandHandler("help", cmd_help))
 
@@ -384,6 +415,7 @@ class TelegramBotStep(Step):
                         BotCommand("jobs", "🔄 Immich job statuses"),
                         BotCommand("backup", "📦 Backup + S3 snapshots"),
                         BotCommand("runbackup", "🚀 Trigger backup now"),
+                        BotCommand("update", "🔄 Update homecloud"),
                         BotCommand("logs", "📋 View backup log"),
                         BotCommand("help", "❓ Show all commands"),
                     ])
