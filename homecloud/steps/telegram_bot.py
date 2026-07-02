@@ -360,24 +360,26 @@ class TelegramBotStep(Step):
                         capture_output=True, text=True, timeout=120)
                     git_out = (git_pull.stdout + git_pull.stderr).strip() or "(no output)"
                     if git_pull.returncode != 0:
-                        await update.message.reply_text(f"❌ git pull failed:\n```
-{git_out[-1500:]}```", parse_mode="Markdown")
+                        await update.message.reply_text(
+                            "❌ git pull failed:\\n```\\n" + git_out[-1500:] + "```",
+                            parse_mode="Markdown")
                         return
                     pip = subprocess.run(
-                        [f"{VENV_DIR}/bin/pip", "install", "--quiet", "-e", INSTALL_DIR],
+                        [f"{{VENV_DIR}}/bin/pip", "install", "--quiet", "-e", INSTALL_DIR],
                         capture_output=True, text=True, timeout=300)
                     pip_out = (pip.stdout + pip.stderr).strip() or "(no output)"
                     if pip.returncode != 0:
-                        await update.message.reply_text(f"❌ pip install failed:\n```
-{pip_out[-1500:]}```", parse_mode="Markdown")
+                        await update.message.reply_text(
+                            "❌ pip install failed:\\n```\\n" + pip_out[-1500:] + "```",
+                            parse_mode="Markdown")
                         return
                     await update.message.reply_text(
-                        f"✅ homecloud updated.\n\n*git pull:*\n```
-{git_out[-800:]}```\n\n*pip install:* OK\n\nRe-run `homecloud` to apply.",
+                        "✅ homecloud updated.\\n\\n*git pull:*\\n```\\n" + git_out[-800:]
+                        + "```\\n\\n*pip install:* OK\\n\\nRe-run `homecloud` to apply.",
                         parse_mode="Markdown")
                 except Exception as e:
-                    logger.error(f"cmd_update error: {e}")
-                    await update.message.reply_text(f"❌ Update failed: {e}")
+                    logger.error(f"cmd_update error: {{e}}")
+                    await update.message.reply_text(f"❌ Update failed: {{e}}")
 
             async def cmd_logs(update, ctx):
                 log_content = run(f"tail -30 {{BACKUP_LOG}} 2>/dev/null") or "No log file yet"
