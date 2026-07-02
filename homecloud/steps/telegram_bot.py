@@ -124,6 +124,9 @@ class TelegramBotStep(Step):
             # Paths used by /update (mirror homecloud.constants)
             INSTALL_DIR = "/opt/homecloud"
             VENV_DIR = "/opt/homecloud-venv"
+            IMMICH_COMPOSE = "/opt/homecloud/immich/docker-compose.yml"
+            BOT_VENV = "/opt/homecloud-bot-env"
+            BOT_SERVICE_NAME = "homecloud-bot"
 
             logging.basicConfig(level=logging.INFO)
             logger = logging.getLogger(__name__)
@@ -305,7 +308,7 @@ class TelegramBotStep(Step):
                     "/jobs — Immich job statuses\\n"
                     "/backup — backup status + S3 snapshots\\n"
                     "/runbackup — trigger a backup NOW\\n"
-                    "/update — update homecloud (git pull + pip install)\\n"
+                    "/update — update everything (homecloud, Immich, bot, restic)\\n"
                     "/logs — last 30 lines of backup log\\n"
                     "/help — show this menu",
                     parse_mode="Markdown")
@@ -354,34 +357,70 @@ class TelegramBotStep(Step):
                     await update.message.reply_text(f"❌ Failed to start backup: {{e}}")
 
             async def cmd_update(update, ctx):
-                """Update homecloud itself: git pull + pip install -e (like the CLI Update menu)."""
-                await update.message.reply_text("🔄 Updating homecloud (git pull + pip install)...")
+                """Update everything: homecloud, Immich, bot deps, restic.
+                Mirrors the CLI 'Update all' menu option."""
+                msg = await update.message.reply_text(
+                    "🔄 *Updating all components...*\\n\\n"
+                    "1️⃣ homecloud (git pull + pip install)\\n"
+                    "2️⃣ Immich (docker compose pull + up)\\n"
+                    "3️⃣ Bot deps (pip upgrade + restart)\\n"
+                    "4️⃣ restic (apt upgrade)\\n\\n"
+                    "⏳ Working...", parse_mode="Markdown")
+                results = []
+
+                def run_cmd(cmd_args, timeout=300):
+                    """Run a command, return (ok, output)."""
+                    try:
+                        p = subprocess.run(cmd_args, capture_output=True,
+                                          text=True, timeout=timeout)
+                        out = (p.stdout + p.stderr).strip()
+                        return p.returncode == 0, out
+                    except subprocess.TimeoutExpired:
+                        return False, "timed out"
+                    except Exception as e:
+                        return False, str(e)
+
+                # 1. homecloud: git pull + pip install
+                ok, out = run_cmd(["git", "-C", INSTALL_DIR, "pull", "--ff-only"], 120)
+                if not ok:
+                    results.append("❌ homecloud git pull: " + out[-300:])
+                else:
+                    ok2, out2 = run_cmd(
+                        [f"{{VENV_DIR}}/bin/pip", "install", "--quiet", "-e", INSTALL_DIR], 300)
+                    results.append("✅ homecloud" if ok2 else "❌ homecloud pip: " + out2[-300:])
+
+                # 2. Immich: docker compose pull + up -d
+                ok, out = run_cmd(
+                    ["docker", "compose", "-f", IMMICH_COMPOSE, "pull"], 300)
+                if not ok:
+                    results.append("❌ Immich pull: " + out[-300:])
+                else:
+                    ok2, out2 = run_cmd(
+                        ["docker", "compose", "-f", IMMICH_COMPOSE, "up", "-d"], 300)
+                    results.append("✅ Immich" if ok2 else "❌ Immich up: " + out2[-300:])
+
+                # 3. Bot deps: pip upgrade + restart
+                ok, out = run_cmd(
+                    [f"{{BOT_VENV}}/bin/pip", "install", "--upgrade", "--quiet",
+                     "python-telegram-bot", "APScheduler", "requests"], 180)
+                if ok:
+                    subprocess.run(["systemctl", "restart", BOT_SERVICE_NAME],
+                                   capture_output=True, timeout=30)
+                    results.append("✅ Bot deps (+ restarted)")
+                else:
+                    results.append("❌ Bot deps: " + out[-300:])
+
+                # 4. restic: apt upgrade
+                run_cmd(["apt-get", "update", "-qq"], 120)
+                ok, out = run_cmd(
+                    ["apt-get", "install", "-y", "--only-upgrade", "restic"], 120)
+                results.append("✅ restic" if ok else "❌ restic: " + out[-300:])
+
+                report = "🔄 *Update All complete*\\n\\n" + "\\n".join(results)
                 try:
-                    git_pull = subprocess.run(
-                        ["git", "-C", INSTALL_DIR, "pull", "--ff-only"],
-                        capture_output=True, text=True, timeout=120)
-                    git_out = (git_pull.stdout + git_pull.stderr).strip() or "(no output)"
-                    if git_pull.returncode != 0:
-                        await update.message.reply_text(
-                            "❌ git pull failed:\\n```\\n" + git_out[-1500:] + "```",
-                            parse_mode="Markdown")
-                        return
-                    pip = subprocess.run(
-                        [f"{{VENV_DIR}}/bin/pip", "install", "--quiet", "-e", INSTALL_DIR],
-                        capture_output=True, text=True, timeout=300)
-                    pip_out = (pip.stdout + pip.stderr).strip() or "(no output)"
-                    if pip.returncode != 0:
-                        await update.message.reply_text(
-                            "❌ pip install failed:\\n```\\n" + pip_out[-1500:] + "```",
-                            parse_mode="Markdown")
-                        return
-                    await update.message.reply_text(
-                        "✅ homecloud updated.\\n\\n*git pull:*\\n```\\n" + git_out[-800:]
-                        + "```\\n\\n*pip install:* OK\\n\\nRe-run `homecloud` to apply.",
-                        parse_mode="Markdown")
-                except Exception as e:
-                    logger.error(f"cmd_update error: {{e}}")
-                    await update.message.reply_text(f"❌ Update failed: {{e}}")
+                    await msg.edit_text(report, parse_mode="Markdown")
+                except Exception:
+                    await msg.edit_text(report)
 
             async def cmd_logs(update, ctx):
                 log_content = run(f"tail -30 {{BACKUP_LOG}} 2>/dev/null") or "No log file yet"
@@ -419,7 +458,7 @@ class TelegramBotStep(Step):
                         BotCommand("jobs", "🔄 Immich job statuses"),
                         BotCommand("backup", "📦 Backup + S3 snapshots"),
                         BotCommand("runbackup", "🚀 Trigger backup now"),
-                        BotCommand("update", "🔄 Update homecloud"),
+                        BotCommand("update", "🔄 Update all components"),
                         BotCommand("logs", "📋 View backup log"),
                         BotCommand("help", "❓ Show all commands"),
                     ])
