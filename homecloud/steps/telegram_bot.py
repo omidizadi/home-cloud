@@ -304,7 +304,9 @@ class TelegramBotStep(Step):
                     "/report — full daily report\\n"
                     "/jobs — Immich job statuses\\n"
                     "/backup — backup status + S3 snapshots\\n"
-                    "/runbackup — trigger a backup NOW\\n"                    "/update — update homecloud (git pull + pip install)\n"                    "/logs — last 30 lines of backup log\\n"
+                    "/runbackup — trigger a backup NOW\\n"
+                    "/update — update homecloud (git pull + pip install)\\n"
+                    "/logs — last 30 lines of backup log\\n"
                     "/help — show this menu",
                     parse_mode="Markdown")
 
